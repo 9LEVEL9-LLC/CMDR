@@ -45,8 +45,7 @@ export default function LoginPage() {
   return (
     <div className="mx-auto grid min-h-[70vh] max-w-md place-items-center px-6 py-24">
       <div className="w-full rounded-xl border border-[var(--color-border)] bg-white p-6 shadow-card">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/nbrain-2025-logo.png" alt="Hyah! AI" className="mx-auto mb-6 h-12 w-auto" />
+        <div className="mx-auto mb-6 text-3xl font-bold text-[var(--color-primary)]">CMDR</div>
         <h1 className="text-center text-2xl font-semibold text-[var(--color-text)]">Sign in</h1>
         <form onSubmit={submit} className="mt-6 grid grid-cols-1 gap-3">
           <input className="rounded-md border border-[var(--color-border)] px-3 py-2" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />

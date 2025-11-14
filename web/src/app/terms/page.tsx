@@ -7,8 +7,7 @@ export default function TermsOfService() {
       <header className="border-b bg-white">
         <div className="container mx-auto flex items-center justify-between px-6 py-4">
           <Link href="/">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/nbrain-2025-logo.png" alt="Hyah AI" className="h-10 w-auto cursor-pointer" />
+            <div className="text-2xl font-bold text-[var(--color-primary)] cursor-pointer">CMDR</div>
           </Link>
           <Link href="/" className="text-sm text-[var(--color-primary)] hover:underline">
             Back to Home

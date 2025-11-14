@@ -40,8 +40,7 @@ export default function Home() {
       <TopWebinarBanner text={bannerText} />
       <header className="border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
         <div className="container mx-auto flex items-center justify-between px-6 py-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/nbrain-2025-logo.png" alt="nBrain" className="h-10 w-auto" />
+        <div className="text-2xl font-bold text-[var(--color-primary)]">CMDR</div>
           <nav className="flex items-center gap-6 text-sm font-semibold text-[var(--color-text)]">
             <a href="#benefits" className="hover:text-[var(--color-primary)]">Benefits</a>
             <a href="#process" className="hover:text-[var(--color-primary)]">Our Process</a>
@@ -559,7 +558,7 @@ export default function Home() {
         <div className="container mx-auto px-6">
           <div className="mb-12 text-center">
             <h2 className="text-3xl font-semibold text-[var(--color-text)]">Why Work With Us</h2>
-            <p className="mt-2 text-[var(--color-text-muted)]">The benefits of partnering with nBrain for your AI transformation</p>
+            <p className="mt-2 text-[var(--color-text-muted)]">The benefits of partnering with CMDR for your AI transformation</p>
           </div>
           
           <div className="mx-auto max-w-6xl">
@@ -590,9 +589,8 @@ export default function Home() {
           {/* Top section with logo and main navigation */}
           <div className="flex flex-col items-center justify-between gap-8 pb-8 md:flex-row">
             <div className="flex flex-col items-center gap-6 md:flex-row md:items-start">
-              {/* Logo */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/nbrain-2025-logo.png" alt="nBrain" className="h-10 w-auto brightness-0 invert" />
+            {/* Logo */}
+            <div className="text-2xl font-bold text-white">CMDR</div>
               
               {/* Main navigation links */}
               <nav className="flex flex-wrap items-center justify-center gap-6 text-sm md:justify-start">
@@ -605,7 +603,7 @@ export default function Home() {
             
             {/* Contact info */}
             <div className="text-sm">
-              <a href="mailto:contact@nbrain.ai" className="text-white/80 hover:text-white">contact@nbrain.ai</a>
+              <a href="mailto:danny@nbrain.ai" className="text-white/80 hover:text-white">danny@nbrain.ai</a>
             </div>
           </div>
           
@@ -614,7 +612,7 @@ export default function Home() {
           
           {/* Bottom section with copyright */}
           <div className="flex flex-col items-center justify-between gap-4 pt-8 text-sm md:flex-row">
-            <div className="text-white/60">© {new Date().getFullYear()} nBrain. All rights reserved.</div>
+            <div className="text-white/60">© {new Date().getFullYear()} CMDR. All rights reserved.</div>
             <div className="flex items-center gap-6 text-white/60">
               <Link href="/privacy" className="hover:text-white">Privacy Policy</Link>
               <Link href="/terms" className="hover:text-white">Terms of Service</Link>

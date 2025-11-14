@@ -38,8 +38,7 @@ export default function ResetPasswordPage(){
   return (
     <div className="mx-auto grid min-h-[70vh] max-w-md place-items-center px-6 py-24">
       <div className="w-full rounded-xl border border-[var(--color-border)] bg-white p-6 shadow-card">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/nbrain-2025-logo.png" alt="Hyah! AI" className="mx-auto mb-6 h-12 w-auto" />
+        <div className="mx-auto mb-6 text-3xl font-bold text-[var(--color-primary)]">CMDR</div>
         <h1 className="text-center text-2xl font-semibold text-[var(--color-text)]">Reset your password</h1>
         {!token && (
           <p className="mt-2 text-center text-sm text-red-600">Invalid or missing token. Please use the link from your email.</p>

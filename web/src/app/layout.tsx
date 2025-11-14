@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "nBrain",
-  description: "Advisor-led AI production. Instantly adopt AI with nBrain.",
+  title: "CMDR",
+  description: "AI Operating System for Fractional CXOs - Stop Trading Time for Money. Start Multiplying It.",
 };
 
 export default function RootLayout({
