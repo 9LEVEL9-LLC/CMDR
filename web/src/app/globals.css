@@ -3,7 +3,9 @@
 @tailwind utilities;
 
 @layer base {
-  body { @apply text-black antialiased; background-color: var(--color-bg); }
+  body { @apply text-black antialiased; background-color: var(--color-bg); margin: 0; padding: 0; }
+  html { margin: 0; padding: 0; }
+  * { box-sizing: border-box; }
 }
 
 /* CMDR Dark Blue Theme - Professional AI Platform */

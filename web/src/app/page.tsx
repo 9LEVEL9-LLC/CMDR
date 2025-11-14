@@ -14,41 +14,64 @@ export default function DemoPage() {
   });
 
   return (
-    <div className="min-h-screen">
-      {/* Top Badge */}
-      <div style={{ backgroundColor: '#00072D', padding: '1rem 0', textAlign: 'center' }}>
-        <div className="section-container">
-          <div style={{ 
-            display: 'inline-flex', 
-            alignItems: 'center', 
-            gap: '0.75rem',
-            padding: '0.5rem 1.5rem',
-            borderRadius: '2rem',
-            backgroundColor: 'rgba(255, 255, 255, 0.1)',
-            color: 'white',
-            fontSize: '0.95rem',
-            fontWeight: '500'
-          }}>
-            <span style={{
-              display: 'inline-block',
-              width: '8px',
-              height: '8px',
-              backgroundColor: '#10B981',
-              borderRadius: '50%',
-              animation: 'pulse 2s infinite'
-            }}></span>
-            2.4x Your Revenue • 35h Less Work • AI-Powered Growth
-          </div>
+    <div style={{ minHeight: '100vh', margin: 0, padding: 0 }}>
+      {/* Top Badge + Login */}
+      <div style={{ backgroundColor: '#00072D', padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ 
+          display: 'inline-flex', 
+          alignItems: 'center', 
+          gap: '0.75rem',
+          padding: '0.5rem 1.5rem',
+          borderRadius: '2rem',
+          backgroundColor: 'rgba(255, 255, 255, 0.1)',
+          color: 'white',
+          fontSize: '0.95rem',
+          fontWeight: '500'
+        }}>
+          <span style={{
+            display: 'inline-block',
+            width: '8px',
+            height: '8px',
+            backgroundColor: '#10B981',
+            borderRadius: '50%',
+            animation: 'pulse 2s infinite'
+          }}></span>
+          2.4x Your Revenue • 35h Less Work • AI-Powered Growth
         </div>
+        
+        <a 
+          href="/login" 
+          style={{
+            color: 'white',
+            textDecoration: 'none',
+            padding: '0.5rem 1.5rem',
+            borderRadius: '0.5rem',
+            border: '2px solid rgba(255, 255, 255, 0.3)',
+            fontSize: '0.95rem',
+            fontWeight: '600',
+            transition: 'all 0.2s'
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+            e.currentTarget.style.borderColor = 'white';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+          }}
+        >
+          Platform Login →
+        </a>
       </div>
 
       {/* Hero Section */}
       <section style={{ 
         background: 'linear-gradient(135deg, #00072D 0%, #051650 100%)',
-        padding: '6rem 0 7rem 0',
-        color: 'white'
+        padding: '6rem 2rem 7rem 2rem',
+        color: 'white',
+        margin: 0
       }}>
-        <div className="section-container" style={{ textAlign: 'center' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
           <h1 style={{
             fontSize: 'clamp(2.5rem, 7vw, 5rem)',
             fontWeight: '700',
@@ -143,8 +166,8 @@ export default function DemoPage() {
       </section>
 
       {/* Real Impact Section */}
-      <section style={{ padding: '5rem 0', backgroundColor: '#f9fafb' }}>
-        <div className="section-container">
+      <section style={{ padding: '5rem 2rem', backgroundColor: '#f9fafb', margin: 0 }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
           <div style={{
             background: 'linear-gradient(135deg, #00072D 0%, #051650 100%)',
             borderRadius: '1.5rem',
@@ -461,11 +484,12 @@ export default function DemoPage() {
 
       {/* Personalization Message Section */}
       <section style={{ 
-        padding: '5rem 0', 
+        padding: '5rem 2rem', 
         backgroundColor: 'white',
-        borderTop: '1px solid #E5E7EB'
+        borderTop: '1px solid #E5E7EB',
+        margin: 0
       }}>
-        <div className="section-container">
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
           <div style={{
             maxWidth: '900px',
             margin: '0 auto',
@@ -972,40 +996,81 @@ export default function DemoPage() {
 
       {/* Footer */}
       <footer style={{
-        padding: '3rem 0',
-        backgroundColor: '#051650',
+        padding: '3rem 2rem',
+        backgroundColor: '#00072D',
         color: 'white',
-        textAlign: 'center'
+        margin: 0
       }}>
-        <div className="section-container">
-          <div style={{ marginBottom: '1.5rem' }}>
-            <h2 style={{
-              fontSize: '2rem',
-              fontWeight: '700',
-              marginBottom: '0.5rem'
-            }}>CMDR</h2>
-            <p style={{
-              opacity: 0.8,
-              fontSize: '1.125rem'
-            }}>AI Platform Development for Fractional CXOs</p>
-          </div>
-          <div style={{ marginBottom: '1.5rem' }}>
-            <a href="https://mycmdr.com" style={{
-              color: 'white',
-              fontSize: '1.125rem',
-              fontWeight: '600',
-              textDecoration: 'none',
-              opacity: 0.9
-            }}>
-              MyCMDR.com
-            </a>
-          </div>
-          <div style={{
-            opacity: 0.7,
-            fontSize: '0.875rem'
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '2rem',
+            marginBottom: '2rem',
+            paddingBottom: '2rem',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
           }}>
-            <p style={{ marginBottom: '0.5rem' }}>2.4x Revenue • 35h Less Work • AI-Powered Multiplication</p>
-            <p>© 2025 CMDR • Stop Trading Time. Start Multiplying It.</p>
+            <div style={{ textAlign: 'left' }}>
+              <h2 style={{
+                fontSize: '1.75rem',
+                fontWeight: '700',
+                marginBottom: '0.5rem',
+                color: 'white'
+              }}>CMDR</h2>
+              <p style={{
+                opacity: 0.8,
+                fontSize: '1rem',
+                margin: 0
+              }}>AI Platform for Fractional CXOs</p>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
+              <a href="/login" style={{
+                color: 'white',
+                fontSize: '1rem',
+                fontWeight: '600',
+                textDecoration: 'none',
+                padding: '0.75rem 1.5rem',
+                border: '2px solid white',
+                borderRadius: '0.5rem',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.backgroundColor = 'white';
+                e.currentTarget.style.color = '#00072D';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = 'white';
+              }}
+              >
+                Platform Login
+              </a>
+            </div>
+          </div>
+          
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '1rem'
+          }}>
+            <div style={{ opacity: 0.7, fontSize: '0.875rem' }}>
+              © 2025 CMDR, an ATOMIQ Studio company • Stop Trading Time. Start Multiplying It.
+            </div>
+            <div style={{ 
+              opacity: 0.7, 
+              fontSize: '0.875rem',
+              display: 'flex',
+              gap: '1.5rem'
+            }}>
+              <span>cjs@atomiqstudio.com</span>
+              <span>•</span>
+              <span>(858) 883-7529</span>
+            </div>
           </div>
         </div>
       </footer>
