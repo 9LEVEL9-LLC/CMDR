@@ -4,26 +4,26 @@
   body { @apply text-black antialiased; background-color: var(--color-bg); }
 }
 
-/* Theme tokens based on styling-theme-instrucvtions.txt - Darker theme for better contrast */
+/* CMDR Dark Blue Theme - Professional AI Platform */
 :root {
-  --color-primary: #bc4a4b;
-  --color-primary-700: #9d3d3e;
-  --color-primary-50: #fef4f4;
-  --color-bg: #F3F4F6;
-  --color-text: #111111;
-  --color-text-muted: #374151;
-  --color-border: #D1D5DB;
-  --color-surface: #FFFFFF;
-  --color-surface-alt: #E5E7EB;
-  --color-accent: #0F766E;
-  --color-accent-50: #ECFDF5;
-  --color-navy: #0F1B2A;
+  --color-primary: #123499;        /* Accent Blue - CTAs, buttons, key UI */
+  --color-primary-700: #0A2472;    /* Medium Blue - hover states */
+  --color-primary-50: #E6EAF5;     /* Light blue tint for backgrounds */
+  --color-bg: #F3F4F6;             /* Clean gray background */
+  --color-text: #00072D;           /* Deepest Navy - headers, main text */
+  --color-text-muted: #374151;     /* Muted gray for secondary text */
+  --color-border: #D1D5DB;         /* Border color */
+  --color-surface: #FFFFFF;        /* White cards and surfaces */
+  --color-surface-alt: #E5E7EB;    /* Alternate surface color */
+  --color-accent: #1A43BF;         /* Light Blue - highlights */
+  --color-accent-50: #EEF2FB;      /* Lightest blue for accents */
+  --color-navy: #051650;           /* Dark Blue - footer, dark sections */
 }
 
 /* Utilities derived from the theme doc */
 .btn-primary { background: var(--color-primary); color: #fff; padding: 12px 20px; border-radius: 10px; font-weight: 600; border: 1px solid transparent; transition: transform .02s ease, background .2s ease, box-shadow .2s ease; }
 .btn-primary:hover { background: var(--color-primary-700); }
-.btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(188,74,75,.25); }
+.btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(18,52,153,.25); }
 .btn-secondary { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); padding: 12px 20px; border-radius: 10px; font-weight: 600; }
 .link { color: var(--color-primary); text-decoration: underline; }
 .link:hover { text-decoration-thickness: 2px; }
@@ -34,12 +34,12 @@
 .section { padding-block: 6rem; }
 .section-lg { padding-block: 7.5rem; }
 
-/* Custom brand color utilities (replacing orange-* classes) */
+/* Custom CMDR brand color utilities */
 .bg-brand-50 { background-color: var(--color-primary-50); }
-.bg-brand-100 { background-color: #fce8e8; }
+.bg-brand-100 { background-color: #D4DCEF; }
 .text-brand-700 { color: var(--color-primary-700); }
-.border-brand-200 { border-color: #f5d5d5; }
-.border-brand-300 { border-color: #eabebe; }
+.border-brand-200 { border-color: #B8C5E8; }
+.border-brand-300 { border-color: #9CAEDE; }
 .hover\:bg-brand-50:hover { background-color: var(--color-primary-50); }
 
 /* Marquee styles for Recent Projects */
