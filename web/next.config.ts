@@ -23,6 +23,15 @@ const nextConfig: NextConfig = {
   generateBuildId: async () => {
     return `build-${Date.now()}`
   },
+  // Rewrite rules for static HTML proposal
+  async rewrites() {
+    return [
+      {
+        source: '/aryn-thomez-business-launch-proposal',
+        destination: '/aryn-thomez-business-launch-proposal.html',
+      },
+    ];
+  },
 };
 
 export default nextConfig;
