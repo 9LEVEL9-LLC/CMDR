@@ -65,6 +65,7 @@ console.log('✅ Ping endpoint registered');
 // CORS configuration with explicit origins
 const corsOptions = {
   origin: [
+    'https://cmdr.onrender.com',
     'https://nbrain-platform-frontend.onrender.com',
     'https://clients.nbrain.ai',
     'http://localhost:3000',
