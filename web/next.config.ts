@@ -1,13 +1,7 @@
 import type { NextConfig } from "next";
 
-// Lock Turbopack root to this workspace to avoid multi-lockfile warnings on Render
+// Next.js configuration for CMDR
 const nextConfig: NextConfig = {
-  experimental: {
-    turbo: {
-      // Ensures Next picks web/ as the root when multiple lockfiles exist upstream
-      root: __dirname,
-    },
-  },
   // Relax build constraints to prevent deployment failures
   eslint: {
     // Warning: This allows production builds to successfully complete
