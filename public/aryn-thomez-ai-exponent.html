@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Where Does Your Time Go? - Property Management Consulting</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f8f9fa;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .header h1 {
+            font-size: 2.8em;
+            color: #1a1f36;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header .subtitle {
+            font-size: 1.4em;
+            color: #4a5568;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .header .description {
+            font-size: 1.05em;
+            color: #718096;
+            max-width: 700px;
+            margin: 0 auto;
+            line-height: 1.7;
+        }
+
+        .stats-bar {
+            background: linear-gradient(135deg, #1a1f36 0%, #2d3748 100%);
+            border-radius: 16px;
+            padding: 35px;
+            display: flex;
+            justify-content: space-around;
+            margin: 30px 0;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 3.5em;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .stat-number.total { color: #ffffff; }
+        .stat-number.admin { color: #667eea; }
+        .stat-number.value { color: #48bb78; }
+
+        .stat-label {
+            font-size: 0.95em;
+            color: #e2e8f0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .breakdown-table {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            margin: 30px 0;
+        }
+
+        .table-header {
+            background: linear-gradient(135deg, #1a1f36 0%, #2d3748 100%);
+            color: white;
+            padding: 20px 25px;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 15px;
+            font-weight: 600;
+            font-size: 0.95em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .table-row {
+            padding: 20px 25px;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 15px;
+            align-items: center;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .table-row:hover {
+            background: #f7fafc;
+        }
+
+        .category-name {
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 1.05em;
+        }
+
+        .task-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 5px;
+        }
+
+        .task-list li {
+            font-size: 0.9em;
+            color: #718096;
+            padding: 2px 0;
+        }
+
+        .task-list li:before {
+            content: "• ";
+            color: #cbd5e0;
+            margin-right: 5px;
+        }
+
+        .time-value {
+            font-weight: 600;
+            font-size: 1.1em;
+            text-align: center;
+        }
+
+        .time-before { color: #718096; }
+        .time-after { color: #2c5282; }
+        .time-saved { color: #48bb78; }
+
+        .highlight-row {
+            background: #f0fff4 !important;
+            border-left: 4px solid #48bb78;
+        }
+
+        .total-row {
+            background: linear-gradient(135deg, #1a1f36 0%, #2d3748 100%);
+            color: white;
+            font-weight: 700;
+            font-size: 1.15em;
+            border: none;
+        }
+
+        .impact-section {
+            background: linear-gradient(135deg, #1a1f36 0%, #2d3748 100%);
+            border-radius: 16px;
+            padding: 45px;
+            margin: 40px 0;
+            color: white;
+        }
+
+        .impact-header {
+            text-align: center;
+            font-size: 2.2em;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .impact-subtitle {
+            text-align: center;
+            font-size: 1.15em;
+            color: #cbd5e0;
+            margin-bottom: 40px;
+            max-width: 650px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .comparison-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 35px;
+            border: 2px solid rgba(255,255,255,0.1);
+        }
+
+        .comparison-card.before {
+            border-color: #fc8181;
+        }
+
+        .comparison-card.after {
+            border-color: #48bb78;
+            background: rgba(72,187,120,0.1);
+        }
+
+        .card-label {
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            opacity: 0.8;
+        }
+
+        .card-title {
+            font-size: 1.6em;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .card-stat {
+            margin: 15px 0;
+        }
+
+        .card-stat-label {
+            font-size: 0.9em;
+            color: #cbd5e0;
+            margin-bottom: 5px;
+        }
+
+        .card-stat-value {
+            font-size: 2.2em;
+            font-weight: 700;
+        }
+
+        .card-state {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .exponential-section {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            margin: 30px 0;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+
+        .exponential-header {
+            text-align: center;
+            font-size: 2em;
+            color: #2d3748;
+            margin-bottom: 35px;
+            font-weight: 700;
+        }
+
+        .step-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 25px;
+            margin-bottom: 35px;
+        }
+
+        .step-card {
+            text-align: center;
+            padding: 25px;
+            background: #f7fafc;
+            border-radius: 12px;
+            border: 2px solid #e2e8f0;
+        }
+
+        .step-number {
+            font-size: 0.9em;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .step-value {
+            font-size: 3em;
+            font-weight: 700;
+            color: #2c5282;
+            margin-bottom: 8px;
+        }
+
+        .step-label {
+            font-size: 0.95em;
+            color: #4a5568;
+        }
+
+        .automation-results {
+            background: #f0fff4;
+            border-radius: 12px;
+            padding: 30px;
+            border-left: 5px solid #48bb78;
+        }
+
+        .automation-title {
+            font-size: 1.4em;
+            color: #2d3748;
+            font-weight: 700;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .automation-grid {
+            display: grid;
+            gap: 20px;
+        }
+
+        .automation-item {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 20px;
+            align-items: center;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .automation-name {
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .automation-stat {
+            text-align: center;
+            font-size: 0.9em;
+            color: #718096;
+        }
+
+        .automation-impact {
+            text-align: center;
+            font-weight: 700;
+            font-size: 1.1em;
+            color: #48bb78;
+        }
+
+        .revenue-calculation {
+            background: #edf2f7;
+            border-radius: 12px;
+            padding: 25px;
+            margin-top: 25px;
+            text-align: center;
+        }
+
+        .revenue-formula {
+            font-size: 1.3em;
+            color: #2d3748;
+            margin-bottom: 15px;
+        }
+
+        .revenue-result {
+            font-size: 2.8em;
+            font-weight: 700;
+            color: #48bb78;
+            margin: 10px 0;
+        }
+
+        .revenue-note {
+            font-size: 0.95em;
+            color: #718096;
+        }
+
+        .multiplier-section {
+            background: linear-gradient(135deg, #f0fff4 0%, #e6fffa 100%);
+            border-radius: 16px;
+            padding: 40px;
+            margin: 30px 0;
+            border: 2px solid #48bb78;
+        }
+
+        .multiplier-icon {
+            text-align: center;
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+
+        .multiplier-title {
+            text-align: center;
+            font-size: 2em;
+            color: #2d3748;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .multiplier-description {
+            text-align: center;
+            font-size: 1.15em;
+            color: #4a5568;
+            max-width: 700px;
+            margin: 0 auto 30px;
+            line-height: 1.8;
+        }
+
+        .multiplier-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 25px;
+            margin-top: 25px;
+        }
+
+        .multiplier-stat {
+            text-align: center;
+            padding: 25px;
+            background: white;
+            border-radius: 12px;
+        }
+
+        .multiplier-stat-value {
+            font-size: 3em;
+            font-weight: 700;
+            color: #48bb78;
+            margin-bottom: 8px;
+        }
+
+        .multiplier-stat-label {
+            font-size: 0.95em;
+            color: #718096;
+        }
+
+        @media (max-width: 768px) {
+            .stats-bar {
+                flex-direction: column;
+                gap: 25px;
+            }
+
+            .table-header, .table-row {
+                grid-template-columns: 1fr;
+                text-align: left;
+            }
+
+            .comparison-grid, .step-grid, .multiplier-stats {
+                grid-template-columns: 1fr;
+            }
+
+            .automation-item {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        
+        <div class="header">
+            <h1>Where Does Your Time Go?</h1>
+            <p class="subtitle">Weekly Time Breakdown: Property Management Consultant with 5-8 Clients</p>
+            <p class="description">The average property management consultant works 50-60 hours per week, but less than 40% is spent on actual client value delivery. The rest? Administrative overhead that AI can eliminate.</p>
+        </div>
+
+        <div class="stats-bar">
+            <div class="stat-item">
+                <div class="stat-number total">55</div>
+                <div class="stat-label">Total Hours/Week</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number admin">35</div>
+                <div class="stat-label">Administrative Hours</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number value">20</div>
+                <div class="stat-label">Client Value Hours</div>
+            </div>
+        </div>
+
+        <div class="breakdown-table">
+            <div class="table-header">
+                <div>Category & Tasks</div>
+                <div>Before CMDR</div>
+                <div>After CMDR</div>
+                <div>Saved</div>
+            </div>
+
+            <div class="table-row">
+                <div>
+                    <div class="category-name">Client Communication</div>
+                    <ul class="task-list">
+                        <li>Property owner updates</li>
+                        <li>Tenant issue escalations</li>
+                        <li>Vendor coordination emails</li>
+                    </ul>
+                </div>
+                <div class="time-value time-before">8h</div>
+                <div class="time-value time-after">3h</div>
+                <div class="time-value time-saved">5h</div>
+            </div>
+
+            <div class="table-row">
+                <div>
+                    <div class="category-name">Portfolio Reporting & Analytics</div>
+                    <ul class="task-list">
+                        <li>Financial performance reports</li>
+                        <li>Occupancy tracking dashboards</li>
+                        <li>Budget variance analysis</li>
+                    </ul>
+                </div>
+                <div class="time-value time-before">7h</div>
+                <div class="time-value time-after">1h</div>
+                <div class="time-value time-saved">6h</div>
+            </div>
+
+            <div class="table-row">
+                <div>
+                    <div class="category-name">Operations Management</div>
+                    <ul class="task-list">
+                        <li>Work order tracking</li>
+                        <li>Maintenance scheduling</li>
+                        <li>Vendor invoice review</li>
+                    </ul>
+                </div>
+                <div class="time-value time-before">6h</div>
+                <div class="time-value time-after">0.5h</div>
+                <div class="time-value time-saved">5.5h</div>
+            </div>
+
+            <div class="table-row">
+                <div>
+                    <div class="category-name">Marketing & Business Development</div>
+                    <ul class="task-list">
+                        <li>Property marketing campaigns</li>
+                        <li>Prospect outreach</li>
+                        <li>RFP responses</li>
+                    </ul>
+                </div>
+                <div class="time-value time-before">5h</div>
+                <div class="time-value time-after">2h</div>
+                <div class="time-value time-saved">3h</div>
+            </div>
+
+            <div class="table-row">
+                <div>
+                    <div class="category-name">Proposal Creation</div>
+                    <ul class="task-list">
+                        <li>Property analysis writeups</li>
+                        <li>Efficiency improvement plans</li>
+                        <li>Cost reduction proposals</li>
+                    </ul>
+                </div>
+                <div class="time-value time-before">4h</div>
+                <div class="time-value time-after">1h</div>
+                <div class="time-value time-saved">3h</div>
+            </div>
+
+            <div class="table-row">
+                <div>
+                    <div class="category-name">Client Onboarding</div>
+                    <ul class="task-list">
+                        <li>Property data collection</li>
+                        <li>System setup & integration</li>
+                        <li>Team training materials</li>
+                    </ul>
+                </div>
+                <div class="time-value time-before">3h</div>
+                <div class="time-value time-after">1h</div>
+                <div class="time-value time-saved">2h</div>
+            </div>
+
+            <div class="table-row">
+                <div>
+                    <div class="category-name">Market Research & Planning</div>
+                    <ul class="task-list">
+                        <li>Rental market analysis</li>
+                        <li>Competitive property research</li>
+                        <li>Industry trend monitoring</li>
+                    </ul>
+                </div>
+                <div class="time-value time-before">4h</div>
+                <div class="time-value time-after">2.5h</div>
+                <div class="time-value time-saved">1.5h</div>
+            </div>
+
+            <div class="table-row">
+                <div>
+                    <div class="category-name">Compliance & Risk Management</div>
+                    <ul class="task-list">
+                        <li>Regulatory compliance audits</li>
+                        <li>Insurance policy reviews</li>
+                        <li>Lease agreement analysis</li>
+                    </ul>
+                </div>
+                <div class="time-value time-before">3h</div>
+                <div class="time-value time-after">0.5h</div>
+                <div class="time-value time-saved">2.5h</div>
+            </div>
+
+            <div class="table-row highlight-row">
+                <div>
+                    <div class="category-name">Client Strategic Work</div>
+                    <ul class="task-list">
+                        <li>High-value consulting</li>
+                        <li>Strategic planning sessions</li>
+                        <li>Executive advisory</li>
+                    </ul>
+                </div>
+                <div class="time-value time-before">12h</div>
+                <div class="time-value time-after">12h</div>
+                <div class="time-value time-saved">0h</div>
+            </div>
+
+            <div class="table-row">
+                <div>
+                    <div class="category-name">Professional Development</div>
+                    <ul class="task-list">
+                        <li>Industry conferences</li>
+                        <li>Certification courses</li>
+                        <li>Networking events</li>
+                    </ul>
+                </div>
+                <div class="time-value time-before">3h</div>
+                <div class="time-value time-after">2h</div>
+                <div class="time-value time-saved">1h</div>
+            </div>
+
+            <div class="table-row total-row">
+                <div>TOTAL WEEKLY HOURS</div>
+                <div class="time-value">55h</div>
+                <div class="time-value">25.5h</div>
+                <div class="time-value">29.5h</div>
+            </div>
+        </div>
+
+        <div class="impact-section">
+            <h2 class="impact-header">But Here's the Real Impact...</h2>
+            <p class="impact-subtitle">Those 29.5 hours aren't ordinary hours—they're AI-powered hours. Every hour you invest is amplified by automation, intelligence, and scale.</p>
+
+            <div class="comparison-grid">
+                <div class="comparison-card before">
+                    <div class="card-label">WITHOUT CMDR</div>
+                    <div class="card-title">Traditional Manual Work</div>
+                    
+                    <div class="card-stat">
+                        <div class="card-stat-label">Max Clients</div>
+                        <div class="card-stat-value">5-8</div>
+                    </div>
+                    
+                    <div class="card-stat">
+                        <div class="card-stat-label">Annual Revenue</div>
+                        <div class="card-stat-value">$600K</div>
+                    </div>
+                    
+                    <div class="card-stat">
+                        <div class="card-stat-label">Work Week</div>
+                        <div class="card-stat-value">55h</div>
+                    </div>
+                    
+                    <div class="card-state" style="color: #fc8181;">Burned Out</div>
+                </div>
+
+                <div class="comparison-card after">
+                    <div class="card-label">WITH CMDR</div>
+                    <div class="card-title">AI-Amplified Growth</div>
+                    
+                    <div class="card-stat">
+                        <div class="card-stat-label">Max Clients (3x Capacity)</div>
+                        <div class="card-stat-value">15-24</div>
+                    </div>
+                    
+                    <div class="card-stat">
+                        <div class="card-stat-label">Annual Revenue (3.5x)</div>
+                        <div class="card-stat-value">$2.1M</div>
+                    </div>
+                    
+                    <div class="card-stat">
+                        <div class="card-stat-label">Work Week (46% less)</div>
+                        <div class="card-stat-value">30h</div>
+                    </div>
+                    
+                    <div class="card-state" style="color: #48bb78;">Thriving</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="exponential-section">
+            <h2 class="exponential-header">The Exponential Effect in Action</h2>
+
+            <div class="step-grid">
+                <div class="step-card">
+                    <div class="step-number">STEP 1: Reclaim Time</div>
+                    <div class="step-value">29.5h</div>
+                    <div class="step-label">Freed up weekly</div>
+                </div>
+
+                <div class="step-card">
+                    <div class="step-number">STEP 2: AI-Amplify It</div>
+                    <div class="step-value">14.75h</div>
+                    <div class="step-label">Applied to automation strategy</div>
+                </div>
+
+                <div class="step-card">
+                    <div class="step-number">RESULT: Scale Revenue</div>
+                    <div class="step-value" style="color: #48bb78;">+$1.5M</div>
+                    <div class="step-label">Additional annual revenue</div>
+                </div>
+            </div>
+
+            <div class="automation-results">
+                <h3 class="automation-title">How AI-Backed Hours Create Exponential Returns</h3>
+                
+                <div class="automation-grid">
+                    <div class="automation-item">
+                        <div class="automation-name">AI-Powered Lead Generation</div>
+                        <div class="automation-stat">2-3 touchpoints</div>
+                        <div class="automation-stat">10-20 prospects/month</div>
+                        <div class="automation-impact">6x more pipeline</div>
+                    </div>
+
+                    <div class="automation-item">
+                        <div class="automation-name">Automated Portfolio Reporting</div>
+                        <div class="automation-stat">100+ properties</div>
+                        <div class="automation-stat">85% time reduction</div>
+                        <div class="automation-impact">4-5x client capacity</div>
+                    </div>
+
+                    <div class="automation-item">
+                        <div class="automation-name">AI Proposal Generation</div>
+                        <div class="automation-stat">2 proposals/week</div>
+                        <div class="automation-stat">10 proposals/month</div>
+                        <div class="automation-impact">5x sales velocity</div>
+                    </div>
+
+                    <div class="automation-item">
+                        <div class="automation-name">Client Onboarding Automation</div>
+                        <div class="automation-stat">1 week per client</div>
+                        <div class="automation-stat">2 days per client</div>
+                        <div class="automation-impact">70% faster ramp</div>
+                    </div>
+                </div>
+
+                <div class="revenue-calculation">
+                    <div class="revenue-formula">8 clients @ $75K/mo → 20 clients @ $87.5K/mo</div>
+                    <div class="revenue-result">+$1.5M</div>
+                    <div class="revenue-note">($600K/year → $2.1M/year increase in consulting + platform revenue)</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="multiplier-section">
+            <div class="multiplier-icon">💡</div>
+            <h2 class="multiplier-title">The Multiplication Factor</h2>
+            <p class="multiplier-description">
+                This isn't just about "saving time"—it's about transforming every hour into a growth engine. When you apply AI-backed hours to client acquisition, retention, and service delivery, you don't get linear results. You get exponential growth.
+            </p>
+
+            <div class="multiplier-stats">
+                <div class="multiplier-stat">
+                    <div class="multiplier-stat-value">6x</div>
+                    <div class="multiplier-stat-label">Lead generation multiplier</div>
+                </div>
+
+                <div class="multiplier-stat">
+                    <div class="multiplier-stat-value">3.5x</div>
+                    <div class="multiplier-stat-label">Revenue capacity</div>
+                </div>
+
+                <div class="multiplier-stat">
+                    <div class="multiplier-stat-value">∞</div>
+                    <div class="multiplier-stat-label">Scalability potential</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</body>
+</html>
+

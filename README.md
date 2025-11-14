@@ -1,36 +1,107 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CMDR - AI Operating System for Fractional CXOs
 
-## Getting Started
+> **Stop Trading Time for Money. Start Multiplying It.**
 
-First, run the development server:
+The AI platform that transforms fractional consultants into technology-powered advisory firms through intelligent automation and exponential growth systems.
+
+---
+
+## 🚀 Quick Start
 
 ```bash
+# Install dependencies
+npm install
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit: http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📄 Available Pages
 
-## Learn More
+- **/** - Stealth demo landing page (main conversion page)
+- **/full** - Complete pitch deck with all sections
+- **/aryn-thomez-ai-exponent.html** - AI Exponent proposal
+- **/aryn-thomez-business-launch-proposal.html** - Business launch proposal
+- **/aryn-thomez-business-plan-proposal.html** - Business plan proposal
+- **/aryn-thomez-platform-pitch.html** - Platform pitch
+- **/property-management-ai-proposal.html** - Property management proposal
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🎯 Key Value Proposition
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### The 2-Step Multiplication System
 
-## Deploy on Vercel
+**Step 1: Reclaim Time**
+- AI eliminates 35 hours of manual work weekly
+- Save time on reporting, admin, communication, proposals
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Step 2: AI-Amplify Returns**  
+- Those aren't ordinary hours—they're AI-powered
+- Apply to automated lead gen and sales
+- 6x more leads, 2.4x more revenue
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Results
+- **Before**: 5-8 clients, $300K revenue, 55h/week, burned out
+- **After**: 12-18 clients, $720K revenue, 35h/week, thriving
+
+---
+
+## 💼 Business Model
+
+### Solo Commander
+- $25,000 one-time license
+- Revenue share: 20% (first $1.5M) → 15% ($1.5M-3M) → 10% (>$3M)
+
+### Master Commander
+- $25,000 one-time license
+- 25% commission on recruits ($6,250 per)
+- Revenue share override: 5% → 3.75% → 2.5%
+
+---
+
+## 🎨 Design System
+
+### Colors (Dark Blue Palette)
+- Primary: `#00072D` (Deepest Navy)
+- Secondary: `#051650` (Dark Blue)
+- Mid: `#0A2472` (Medium Blue)
+- Accent: `#123499` (Bright Blue)
+- Light: `#1A43BF` (Light Blue)
+- Success: `#10B981` (Green)
+
+---
+
+## 🌐 Deployment
+
+### Deploy to Render
+
+1. Connect this GitHub repo to Render
+2. Set build command: `npm install && npm run build`
+3. Set start command: `npm start`
+4. Deploy!
+
+### Environment Variables
+No environment variables required for static site.
+
+---
+
+## 📞 Contact
+
+**Website**: MyCMDR.com  
+**Email**: danny@nbrain.ai  
+**Partnership**: $25K License • 20% Revenue Share  
+
+---
+
+© 2025 CMDR • AI-Powered Multiplication for Fractional CXOs

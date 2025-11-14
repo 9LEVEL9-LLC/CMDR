@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your AI-Powered Asset Management Platform - Custom Solution</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #1a1a1a;
+            background: #ffffff;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c5282 0%, #2b6cb0 100%);
+            color: white;
+            padding: 80px 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 3.2em;
+            margin-bottom: 25px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .header .subtitle {
+            font-size: 1.6em;
+            opacity: 0.95;
+            margin-bottom: 20px;
+            font-weight: 300;
+        }
+
+        .header .tagline {
+            font-size: 1.3em;
+            max-width: 900px;
+            margin: 0 auto;
+            line-height: 1.8;
+            opacity: 0.9;
+        }
+
+        .intro-banner {
+            background: #f7fafc;
+            padding: 50px 20px;
+            text-align: center;
+            border-bottom: 3px solid #2c5282;
+        }
+
+        .intro-banner h2 {
+            font-size: 2.2em;
+            color: #2d3748;
+            margin-bottom: 25px;
+        }
+
+        .intro-banner p {
+            font-size: 1.3em;
+            color: #4a5568;
+            max-width: 900px;
+            margin: 0 auto;
+            line-height: 1.8;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .section {
+            margin-bottom: 80px;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .section-header h2 {
+            font-size: 2.8em;
+            color: #2d3748;
+            margin-bottom: 15px;
+        }
+
+        .section-header p {
+            font-size: 1.3em;
+            color: #718096;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .problem-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .problem-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 35px;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .problem-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(44, 82, 130, 0.15);
+            border-color: #2c5282;
+        }
+
+        .problem-card .icon {
+            font-size: 3.5em;
+            margin-bottom: 20px;
+        }
+
+        .problem-card h3 {
+            font-size: 1.6em;
+            color: #2d3748;
+            margin-bottom: 15px;
+        }
+
+        .problem-card .stat {
+            font-size: 2.8em;
+            font-weight: 700;
+            color: #2c5282;
+            margin: 20px 0;
+        }
+
+        .problem-card p {
+            color: #4a5568;
+            line-height: 1.8;
+            font-size: 1.05em;
+        }
+
+        .quote-block {
+            background: #edf2f7;
+            border-left: 6px solid #2c5282;
+            padding: 40px 50px;
+            margin: 50px 0;
+            font-style: italic;
+            position: relative;
+        }
+
+        .quote-block::before {
+            content: '"';
+            font-size: 6em;
+            color: #2c5282;
+            opacity: 0.2;
+            position: absolute;
+            top: 10px;
+            left: 15px;
+        }
+
+        .quote-block p {
+            font-size: 1.35em;
+            color: #2d3748;
+            line-height: 1.8;
+            margin-bottom: 15px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .quote-block .attribution {
+            font-size: 1em;
+            color: #718096;
+            font-style: normal;
+            font-weight: 600;
+        }
+
+        .solution-features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 40px;
+        }
+
+        .feature-card {
+            background: linear-gradient(135deg, #2c5282 0%, #2b6cb0 100%);
+            color: white;
+            padding: 35px;
+            border-radius: 12px;
+            transition: transform 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: scale(1.05);
+        }
+
+        .feature-card .icon {
+            font-size: 2.8em;
+            margin-bottom: 15px;
+        }
+
+        .feature-card h3 {
+            font-size: 1.4em;
+            margin-bottom: 15px;
+        }
+
+        .feature-card p {
+            font-size: 1.05em;
+            opacity: 0.95;
+            line-height: 1.8;
+        }
+
+        .platform-modules {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .module-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 40px;
+            transition: all 0.3s;
+        }
+
+        .module-card:hover {
+            border-color: #2c5282;
+            box-shadow: 0 10px 30px rgba(44, 82, 130, 0.15);
+        }
+
+        .module-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+
+        .module-number {
+            background: linear-gradient(135deg, #2c5282 0%, #2b6cb0 100%);
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8em;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .module-content h3 {
+            font-size: 1.8em;
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+
+        .module-content .subtitle {
+            color: #718096;
+            font-size: 1.15em;
+        }
+
+        .module-features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        .module-features li {
+            color: #4a5568;
+            padding: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.05em;
+        }
+
+        .module-features li:before {
+            content: "✓";
+            color: #2c5282;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .value-highlight {
+            background: #edf2f7;
+            padding: 25px;
+            border-radius: 8px;
+            margin-top: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .value-highlight .label {
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 1.1em;
+        }
+
+        .value-highlight .amount {
+            font-size: 2em;
+            font-weight: 700;
+            color: #2c5282;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .stat-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 35px;
+            text-align: center;
+        }
+
+        .stat-card .number {
+            font-size: 3.5em;
+            font-weight: 700;
+            color: #2c5282;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .label {
+            color: #4a5568;
+            font-size: 1.15em;
+            line-height: 1.5;
+        }
+
+        .roi-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 30px;
+            background: white;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .roi-table thead {
+            background: linear-gradient(135deg, #2c5282 0%, #2b6cb0 100%);
+            color: white;
+        }
+
+        .roi-table th,
+        .roi-table td {
+            padding: 20px;
+            text-align: left;
+        }
+
+        .roi-table th {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.95em;
+            letter-spacing: 1px;
+        }
+
+        .roi-table tbody tr {
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .roi-table tbody tr:hover {
+            background: #f7fafc;
+        }
+
+        .roi-table .highlight {
+            background: #edf2f7;
+            font-weight: 700;
+        }
+
+        .roi-table .total-row {
+            background: #2c5282;
+            color: white;
+            font-weight: 700;
+            font-size: 1.1em;
+        }
+
+        .comparison-box {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-top: 40px;
+        }
+
+        .comparison-card {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 40px;
+        }
+
+        .comparison-card.current {
+            border-color: #fc8181;
+            background: #fff5f5;
+        }
+
+        .comparison-card.future {
+            border-color: #48bb78;
+            background: #f0fff4;
+        }
+
+        .comparison-card h3 {
+            font-size: 1.8em;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .comparison-card ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .comparison-card li {
+            padding: 12px 0;
+            border-bottom: 1px solid #e2e8f0;
+            color: #4a5568;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .comparison-card li:last-child {
+            border-bottom: none;
+        }
+
+        .comparison-card.current li:before {
+            content: "✗";
+            color: #fc8181;
+            font-weight: bold;
+            font-size: 1.3em;
+        }
+
+        .comparison-card.future li:before {
+            content: "✓";
+            color: #48bb78;
+            font-weight: bold;
+            font-size: 1.3em;
+        }
+
+        .timeline {
+            position: relative;
+            padding: 40px 0;
+        }
+
+        .timeline-item {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        .timeline-marker {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, #2c5282 0%, #2b6cb0 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            flex-shrink: 0;
+            font-size: 1.3em;
+        }
+
+        .timeline-content {
+            flex: 1;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 30px;
+        }
+
+        .timeline-content h3 {
+            color: #2d3748;
+            font-size: 1.5em;
+            margin-bottom: 12px;
+        }
+
+        .timeline-content p {
+            color: #4a5568;
+            line-height: 1.8;
+            font-size: 1.05em;
+        }
+
+        .pricing-section {
+            background: linear-gradient(135deg, #2c5282 0%, #2b6cb0 100%);
+            color: white;
+            padding: 80px 20px;
+            margin-top: 60px;
+            text-align: center;
+        }
+
+        .pricing-section h2 {
+            font-size: 2.8em;
+            margin-bottom: 30px;
+        }
+
+        .pricing-section p {
+            font-size: 1.3em;
+            max-width: 800px;
+            margin: 0 auto 50px;
+            opacity: 0.95;
+            line-height: 1.8;
+        }
+
+        .pricing-box {
+            background: white;
+            color: #2d3748;
+            border-radius: 12px;
+            padding: 50px;
+            max-width: 800px;
+            margin: 0 auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .pricing-amount {
+            font-size: 4em;
+            font-weight: 700;
+            color: #2c5282;
+            margin-bottom: 20px;
+        }
+
+        .pricing-details {
+            font-size: 1.2em;
+            color: #4a5568;
+            margin-bottom: 30px;
+        }
+
+        .pricing-includes {
+            text-align: left;
+            margin-top: 40px;
+        }
+
+        .pricing-includes h3 {
+            font-size: 1.5em;
+            color: #2d3748;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .pricing-includes ul {
+            list-style: none;
+            padding: 0;
+            column-count: 2;
+            column-gap: 30px;
+        }
+
+        .pricing-includes li {
+            padding: 10px 0;
+            color: #4a5568;
+            font-size: 1.05em;
+        }
+
+        .pricing-includes li:before {
+            content: "✓";
+            color: #48bb78;
+            font-weight: bold;
+            margin-right: 10px;
+            font-size: 1.2em;
+        }
+
+        .cta-section {
+            background: #f7fafc;
+            padding: 80px 20px;
+            text-align: center;
+        }
+
+        .cta-section h2 {
+            font-size: 2.8em;
+            color: #2d3748;
+            margin-bottom: 25px;
+        }
+
+        .cta-section p {
+            font-size: 1.4em;
+            color: #4a5568;
+            max-width: 800px;
+            margin: 0 auto 40px;
+            line-height: 1.8;
+        }
+
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #2c5282 0%, #2b6cb0 100%);
+            color: white;
+            padding: 20px 50px;
+            border-radius: 50px;
+            font-size: 1.3em;
+            font-weight: 700;
+            text-decoration: none;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .cta-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(44, 82, 130, 0.3);
+        }
+
+        .footer {
+            background: #2d3748;
+            color: white;
+            padding: 50px 20px;
+            text-align: center;
+        }
+
+        .footer p {
+            opacity: 0.8;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2.2em;
+            }
+
+            .comparison-box {
+                grid-template-columns: 1fr;
+            }
+
+            .pricing-includes ul {
+                column-count: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Stop Reacting to Your Business.<br/>Start Leading It.</h1>
+        <p class="subtitle">Your Custom AI-Powered Asset Management Platform</p>
+        <p class="tagline">A turnkey intelligence system built exclusively for your portfolio—giving you the visibility, automation, and strategic control that transforms asset ownership from reactive chaos to proactive leadership.</p>
+    </div>
+
+    <div class="intro-banner">
+        <h2>This Isn't Software. It's Your Strategic Asset.</h2>
+        <p>Every tool you've invested in serves your team. Your PMS for operators. Your CRM for leasing. Your accounting software for bookkeepers. <strong>This is the first platform built exclusively for YOU—the owner who needs to lead, not just manage.</strong></p>
+    </div>
+
+    <div class="container">
+
+        <!-- THE REALITY YOU'RE LIVING -->
+        <section class="section">
+            <div class="section-header">
+                <h2>The Reality You're Living Right Now</h2>
+                <p>If you manage 5,000+ units, these aren't hypotheticals. This is your daily existence.</p>
+            </div>
+
+            <div class="problem-grid">
+                <div class="problem-card">
+                    <div class="icon">🔥</div>
+                    <h3>Trapped in Reactive Mode</h3>
+                    <div class="stat">100%</div>
+                    <p>Of your time is spent reacting to fires. A flood here. A maintenance crisis there. An investor call about numbers you haven't even seen yet. You're managing operations instead of leading your business.</p>
+                </div>
+
+                <div class="problem-card">
+                    <div class="icon">⏰</div>
+                    <h3>Time You'll Never Get Back</h3>
+                    <div class="stat">60+ hrs/wk</div>
+                    <p>You and your executives waste 60+ hours weekly on manual compliance reviews, chasing down financial reports, consolidating data from 8-15 different systems, and trying to make sense of it all.</p>
+                </div>
+
+                <div class="problem-card">
+                    <div class="icon">💸</div>
+                    <h3>Money Hemorrhaging</h3>
+                    <div class="stat">$100K+</div>
+                    <p>You're losing $100K+ annually to hidden inefficiencies. Utility leaks you don't discover for 6 months. Deferred maintenance that compounds into six-figure disasters. Budget variances you find out about too late.</p>
+                </div>
+
+                <div class="problem-card">
+                    <div class="icon">🤯</div>
+                    <h3>Technology Chaos</h3>
+                    <div class="stat">8-15 systems</div>
+                    <p>You're juggling Yardi, MRI, QuickBooks, Excel spreadsheets, email threads, text messages, and hoping nothing falls through the cracks. Data lives everywhere. Insights live nowhere.</p>
+                </div>
+
+                <div class="problem-card">
+                    <div class="icon">👥</div>
+                    <h3>Expensive Human Routers</h3>
+                    <div class="stat">$150K+</div>
+                    <p>Your regional managers and VPs ($150K+ salaries each) spend their days as expensive messengers—moving information from operations to you without adding strategic value. They're reactive, not proactive.</p>
+                </div>
+
+                <div class="problem-card">
+                    <div class="icon">📉</div>
+                    <h3>Flying Blind</h3>
+                    <div class="stat">30-90 days</div>
+                    <p>By the time you see a trend, it's already cost you. You get monthly reports when you need daily intelligence. You find out about problems when it's too late to prevent them.</p>
+                </div>
+            </div>
+
+            <div class="quote-block">
+                <p>You spend all day, every day, putting out fires. You're so focused on the here and now—the flood, the lease expiring, the maintenance crisis—that you never get to step back and look at the big picture. There's no system telling you what's about to break. You only find out when it's already on fire.</p>
+                <p class="attribution">— Does this sound familiar?</p>
+            </div>
+
+            <div class="comparison-box">
+                <div class="comparison-card current">
+                    <h3><span style="color: #fc8181; font-size: 1.5em;">✗</span> Your Reality Today</h3>
+                    <ul>
+                        <li>Monthly reports, weeks late</li>
+                        <li>10+ systems to check manually</li>
+                        <li>Problems discovered after the fact</li>
+                        <li>60+ hours/week on admin work</li>
+                        <li>Regional managers as human routers</li>
+                        <li>Utility leaks found 6 months too late</li>
+                        <li>Budget variances as surprises</li>
+                        <li>No predictive intelligence</li>
+                        <li>Investor questions you can't answer immediately</li>
+                        <li>Working IN your business, not ON it</li>
+                    </ul>
+                </div>
+
+                <div class="comparison-card future">
+                    <h3><span style="color: #48bb78; font-size: 1.5em;">✓</span> Your Reality With This Platform</h3>
+                    <ul>
+                        <li>Real-time dashboard, always current</li>
+                        <li>One unified view of everything</li>
+                        <li>Problems predicted 30-90 days early</li>
+                        <li>90% reduction in manual work</li>
+                        <li>Automation replaces middle management</li>
+                        <li>Utility anomalies detected within days</li>
+                        <li>Budget tracking in real-time</li>
+                        <li>AI-powered predictive alerts</li>
+                        <li>Instant answers from your AI assistant</li>
+                        <li>Leading strategically, not managing operationally</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- THE SOLUTION -->
+        <section class="section">
+            <div class="section-header">
+                <h2>The Solution You've Been Missing</h2>
+                <p>A custom-built AI platform that sits above all your systems and gives you what you actually need: clarity, control, and the ability to lead proactively.</p>
+            </div>
+
+            <p style="font-size: 1.25em; line-height: 1.8; color: #4a5568; margin-bottom: 40px;">
+                This isn't a SaaS product with generic features. This is <strong>your platform, built for your portfolio</strong>, integrating with your existing systems, configured to your policies, and designed around how <strong>you</strong> want to run your business. It's the owner's tool—the one thing you actually use daily.
+            </p>
+
+            <div class="solution-features">
+                <div class="feature-card">
+                    <div class="icon">🎯</div>
+                    <h3>Portfolio Intelligence Dashboard</h3>
+                    <p>One screen. All your properties. Green/yellow/red status for everything that matters. Financial health, occupancy, maintenance issues, compliance risks—instantly visible.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="icon">🤖</div>
+                    <h3>Policy-Driven Automation</h3>
+                    <p>Emergency at 2am? The system routes it automatically based on your rules. No human needed. Work orders, approvals, vendor dispatch—all handled intelligently.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="icon">🔮</div>
+                    <h3>Predictive Intelligence</h3>
+                    <p>AI analyzes patterns and warns you 30-90 days before problems hit. Utility spikes. Maintenance trends. Budget variances. Deferred maintenance risks. You prevent instead of react.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="icon">🛡️</div>
+                    <h3>Risk & Compliance Engine</h3>
+                    <p>Automated policy audits. Insurance coverage analysis. Regulatory tracking. Instant alerts when gaps appear. Sleep better knowing nothing's falling through the cracks.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="icon">⚡</div>
+                    <h3>Works With What You Have</h3>
+                    <p>Plugs into Yardi, MRI, OneSite, Entrata, QuickBooks—whatever you use. No rip-and-replace. No disruption. Just instant clarity on top of your existing systems.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="icon">💬</div>
+                    <h3>Your AI Assistant</h3>
+                    <p>Ask questions in plain English. "Show me properties over budget this month." "Which buildings have the most maintenance issues?" Instant answers from your entire portfolio.</p>
+                </div>
+            </div>
+
+            <div class="quote-block" style="margin-top: 60px;">
+                <p>This is the one thing you'll actually use every day. Not another tool for your team. This is YOUR window into your entire operation. Your strategic command center. The platform that lets you work ON your business instead of drowning IN it.</p>
+                <p class="attribution">— Built exclusively for asset owners who want to lead, not just manage</p>
+            </div>
+        </section>
+
+        <!-- WHAT YOU GET -->
+        <section class="section">
+            <div class="section-header">
+                <h2>The Six Systems You Get</h2>
+                <p>Every module designed to solve a specific pain point you face daily</p>
+            </div>
+
+            <div class="platform-modules">
+                <div class="module-card">
+                    <div class="module-header">
+                        <div class="module-number">1</div>
+                        <div class="module-content">
+                            <h3>Portfolio Health Command Center</h3>
+                            <p class="subtitle">Real-time visibility into every property, every metric, all in one place</p>
+                        </div>
+                    </div>
+                    <ul class="module-features">
+                        <li>Green/Yellow/Red status dashboard for all properties</li>
+                        <li>Financial KPIs: NOI, cash flow, budget variance—updated daily</li>
+                        <li>Occupancy, leasing velocity, and turnover metrics</li>
+                        <li>Maintenance backlog and critical issues tracker</li>
+                        <li>Customizable alerts sent to your phone/email/Teams</li>
+                        <li>Trend analysis that shows you what's improving or declining</li>
+                    </ul>
+                    <div class="value-highlight">
+                        <span class="label">Time Saved Weekly</span>
+                        <span class="amount">20-30 hours</span>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <div class="module-number">2</div>
+                        <div class="module-content">
+                            <h3>Intelligent Policy & Risk Engine</h3>
+                            <p class="subtitle">Your policies, automated—with instant compliance scoring</p>
+                        </div>
+                    </div>
+                    <ul class="module-features">
+                        <li>Upload your policies (any format)—AI analyzes and scores them</li>
+                        <li>Identifies gaps against best-practices baseline</li>
+                        <li>Provides template policies for what you're missing</li>
+                        <li>Insurance coverage cross-check and gap detection</li>
+                        <li>Automated regulatory compliance tracking</li>
+                        <li>Instant alerts when policies need updating</li>
+                    </ul>
+                    <div class="value-highlight">
+                        <span class="label">Risk Reduction</span>
+                        <span class="amount">60-80%</span>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <div class="module-number">3</div>
+                        <div class="module-content">
+                            <h3>Automated Workflow System</h3>
+                            <p class="subtitle">Eliminate human bottlenecks with policy-based automation</p>
+                        </div>
+                    </div>
+                    <ul class="module-features">
+                        <li>Emergency response automation (flood at 2am? System handles it)</li>
+                        <li>Work order routing based on property, vendor, cost thresholds</li>
+                        <li>Approval workflows with automatic escalation</li>
+                        <li>Vendor management and smart dispatch</li>
+                        <li>Resident communication automation (powered by AI)</li>
+                        <li>Integration with ServePro, contractors, call centers</li>
+                    </ul>
+                    <div class="value-highlight">
+                        <span class="label">Response Time Improvement</span>
+                        <span class="amount">70-90% faster</span>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <div class="module-number">4</div>
+                        <div class="module-content">
+                            <h3>Financial Intelligence Hub</h3>
+                            <p class="subtitle">Consolidated financials with predictive budget tracking</p>
+                        </div>
+                    </div>
+                    <ul class="module-features">
+                        <li>Multi-property GL consolidation and analysis</li>
+                        <li>Budget vs. actual with variance alerts (daily, not monthly)</li>
+                        <li>Capital project spend tracking in real-time</li>
+                        <li>Utility benchmarking with anomaly detection</li>
+                        <li>Revenue optimization recommendations</li>
+                        <li>Cash flow forecasting and what-if modeling</li>
+                    </ul>
+                    <div class="value-highlight">
+                        <span class="label">Annual Savings Identified</span>
+                        <span class="amount">$75K-$150K+</span>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <div class="module-number">5</div>
+                        <div class="module-content">
+                            <h3>Predictive Maintenance Intelligence</h3>
+                            <p class="subtitle">Stop reacting to crises. Prevent them before they happen.</p>
+                        </div>
+                    </div>
+                    <ul class="module-features">
+                        <li>Work order pattern analysis (15 plumbing calls = bigger problem)</li>
+                        <li>Deferred maintenance identification and prioritization</li>
+                        <li>Vendor performance tracking and quality scoring</li>
+                        <li>Utility leak detection algorithms (catch issues in days, not months)</li>
+                        <li>Equipment lifecycle management and replacement planning</li>
+                        <li>Capital planning recommendations based on asset condition</li>
+                    </ul>
+                    <div class="value-highlight">
+                        <span class="label">Prevented Loss Per Property</span>
+                        <span class="amount">$25K-$75K/year</span>
+                    </div>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-header">
+                        <div class="module-number">6</div>
+                        <div class="module-content">
+                            <h3>Executive Command Center</h3>
+                            <p class="subtitle">Your strategic view—investor relations, portfolio performance, strategic decisions</p>
+                        </div>
+                    </div>
+                    <ul class="module-features">
+                        <li>Executive dashboard with portfolio-wide insights</li>
+                        <li>Investor relations reporting (automated, professional)</li>
+                        <li>Acquisition/divestiture decision support</li>
+                        <li>Refinancing opportunity identification</li>
+                        <li>Natural language AI assistant ("Show me my worst performers")</li>
+                        <li>Mobile app (iOS + Android) for on-the-go access</li>
+                    </ul>
+                    <div class="value-highlight">
+                        <span class="label">Strategic Decision Speed</span>
+                        <span class="amount">10X Faster</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- THE VALUE YOU'LL CAPTURE -->
+        <section class="section">
+            <div class="section-header">
+                <h2>The Value You'll Capture</h2>
+                <p>This isn't theory. Here's the math for a 10,000-unit portfolio.</p>
+            </div>
+
+            <table class="roi-table">
+                <thead>
+                    <tr>
+                        <th>Value Source</th>
+                        <th>How It Works</th>
+                        <th>Annual Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Executive Time Recovery</strong></td>
+                        <td>Your team saves 25 hrs/week @ $150/hr average (no more manual reporting, data compilation, chasing updates)</td>
+                        <td style="font-size: 1.2em; color: #2c5282; font-weight: 600;">$195,000</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Middle Management Reduction</strong></td>
+                        <td>Eliminate 1-2 regional VP positions ($150K each) because automation handles routing and coordination</td>
+                        <td style="font-size: 1.2em; color: #2c5282; font-weight: 600;">$180,000</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Utility Optimization</strong></td>
+                        <td>3% reduction on $2M annual utility spend through early leak detection and anomaly alerts</td>
+                        <td style="font-size: 1.2em; color: #2c5282; font-weight: 600;">$60,000</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Deferred Maintenance Prevention</strong></td>
+                        <td>Catch 1-2 major issues before they compound (avg. $25K-50K each when caught early vs. $100K+ when they fail)</td>
+                        <td style="font-size: 1.2em; color: #2c5282; font-weight: 600;">$50,000</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Faster Vendor Response</strong></td>
+                        <td>Automated dispatch eliminates emergency multipliers and reduces average response time by 70%</td>
+                        <td style="font-size: 1.2em; color: #2c5282; font-weight: 600;">$35,000</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Budget Variance Prevention</strong></td>
+                        <td>Daily tracking catches overspend early—prevents 2-3% budget overruns per property</td>
+                        <td style="font-size: 1.2em; color: #2c5282; font-weight: 600;">$40,000</td>
+                    </tr>
+                    <tr class="total-row">
+                        <td colspan="2">TOTAL ANNUAL VALUE CAPTURED</td>
+                        <td style="font-size: 1.5em;">$560,000/year</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div style="margin-top: 50px; background: #edf2f7; padding: 40px; border-radius: 12px; border-left: 6px solid #2c5282;">
+                <h3 style="font-size: 2em; color: #2d3748; margin-bottom: 30px; text-align: center;">What This Means for Your Portfolio</h3>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="number">$560K</div>
+                        <div class="label">Annual value captured from efficiency and prevention</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="number">60+ hrs</div>
+                        <div class="label">Saved weekly across your executive team</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="number">30-90 days</div>
+                        <div class="label">Earlier problem detection with predictive alerts</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="number">1 platform</div>
+                        <div class="label">Replaces checking 8-15 different systems daily</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 40px; text-align: center; padding: 30px; background: white; border-radius: 8px;">
+                    <div style="font-size: 1.3em; color: #4a5568; margin-bottom: 10px;">This is YOUR asset. It grows with every property you acquire.</div>
+                    <div style="font-size: 1.1em; color: #718096;">When you divest a property, this stays with you. It's your competitive advantage, not tied to any single building.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- HOW IT WORKS -->
+        <section class="section">
+            <div class="section-header">
+                <h2>How We Build Your Platform</h2>
+                <p>6 weeks from kickoff to launch. Here's exactly what happens.</p>
+            </div>
+
+            <div class="timeline">
+                <div class="timeline-item">
+                    <div class="timeline-marker">Week 1</div>
+                    <div class="timeline-content">
+                        <h3>Discovery & Architecture</h3>
+                        <p>We inventory your systems (PMS, accounting, documents), collect your policies, understand your workflows, and design the exact dashboard you need. You approve the architecture before we write a line of code.</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-marker">Week 2</div>
+                    <div class="timeline-content">
+                        <h3>Core Infrastructure Build</h3>
+                        <p>We build the foundation—database, authentication, integrations with your PMS and accounting systems, and the initial AI policy analyzer. You see progress daily.</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-marker">Week 3</div>
+                    <div class="timeline-content">
+                        <h3>Dashboard & Intelligence Engine</h3>
+                        <p>Your portfolio health dashboard goes live. Financial intelligence module. KPI tracking. Trend analysis. Alerts configured to your preferences. You start seeing value immediately.</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-marker">Week 4</div>
+                    <div class="timeline-content">
+                        <h3>Automation & Policy Engine</h3>
+                        <p>Workflow automation configured to your rules. Policy engine ingests your documents. Vendor management system set up. Emergency routing tested and live.</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-marker">Week 5</div>
+                    <div class="timeline-content">
+                        <h3>Predictive Intelligence Activation</h3>
+                        <p>AI models trained on your historical data. Anomaly detection goes live. Predictive maintenance algorithms activated. You get your first early-warning alerts.</p>
+                    </div>
+                </div>
+
+                <div class="timeline-item">
+                    <div class="timeline-marker">Week 6</div>
+                    <div class="timeline-content">
+                        <h3>Executive Center & Launch</h3>
+                        <p>Mobile apps deployed. Executive command center finalized. Your team trained. Documentation delivered. You go live with the full platform.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 50px; background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 40px;">
+                <h3 style="font-size: 1.8em; color: #2d3748; margin-bottom: 25px; text-align: center;">After Launch: Continuous Evolution</h3>
+                
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 30px;">
+                    <div style="text-align: center; padding: 25px;">
+                        <h4 style="color: #2c5282; font-size: 1.3em; margin-bottom: 15px;">Weeks 7-8</h4>
+                        <p style="color: #4a5568; line-height: 1.7;">Bug fixes, optimization, integration of your feedback</p>
+                    </div>
+                    <div style="text-align: center; padding: 25px; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0;">
+                        <h4 style="color: #2c5282; font-size: 1.3em; margin-bottom: 15px;">Months 2-3</h4>
+                        <p style="color: #4a5568; line-height: 1.7;">Feature enhancements, additional integrations, advanced training</p>
+                    </div>
+                    <div style="text-align: center; padding: 25px;">
+                        <h4 style="color: #2c5282; font-size: 1.3em; margin-bottom: 15px;">Ongoing</h4>
+                        <p style="color: #4a5568; line-height: 1.7;">Monthly updates, quarterly feature releases, dedicated support</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- WHY THIS WORKS -->
+        <section class="section">
+            <div class="section-header">
+                <h2>Why This Works When Other "Solutions" Don't</h2>
+                <p>Five fundamental reasons this succeeds where everything else has failed you</p>
+            </div>
+
+            <div class="problem-grid">
+                <div class="problem-card">
+                    <div class="icon">🎯</div>
+                    <h3>Built For You, Not Your Team</h3>
+                    <p>Every tool you've bought serves your operators, managers, or leasing agents. This is the first platform built exclusively for the owner who needs to lead strategically.</p>
+                </div>
+
+                <div class="problem-card">
+                    <div class="icon">🔗</div>
+                    <h3>Works With What You Have</h3>
+                    <p>No rip-and-replace. Integrates with Yardi, MRI, QuickBooks, Excel—whatever you use today. Sits above the chaos and makes sense of it.</p>
+                </div>
+
+                <div class="problem-card">
+                    <div class="icon">🏗️</div>
+                    <h3>Custom, Not Generic</h3>
+                    <p>This isn't a SaaS product with features you don't need. It's built for YOUR portfolio, YOUR policies, YOUR way of doing business.</p>
+                </div>
+
+                <div class="problem-card">
+                    <div class="icon">🧠</div>
+                    <h3>AI-Native Intelligence</h3>
+                    <p>Built from scratch with GPT-4 and custom ML models. Not a legacy tool with AI bolted on as an afterthought.</p>
+                </div>
+
+                <div class="problem-card">
+                    <div class="icon">💎</div>
+                    <h3>You Own It Completely</h3>
+                    <p>This isn't a monthly subscription. You own the code, the platform, the intelligence. It's a strategic asset that appreciates as your portfolio grows.</p>
+                </div>
+
+                <div class="problem-card">
+                    <div class="icon">📊</div>
+                    <h3>Proven ROI Model</h3>
+                    <p>Quantifiable savings in time, cost reduction, and prevented losses. Most clients see full payback in under 60 days.</p>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- PRICING -->
+    <div class="pricing-section">
+        <h2>Your Investment</h2>
+        <p>A one-time build that becomes your strategic asset. No monthly subscriptions. No per-user fees. You own it completely.</p>
+        
+        <div class="pricing-box">
+            <div class="pricing-amount">$125,000</div>
+            <div class="pricing-details">One-time investment for your complete custom platform</div>
+            
+            <div style="background: #edf2f7; padding: 30px; border-radius: 8px; margin: 30px 0;">
+                <h4 style="font-size: 1.4em; color: #2d3748; margin-bottom: 15px;">Payment Structure</h4>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; text-align: center;">
+                    <div>
+                        <div style="font-size: 1.8em; font-weight: 700; color: #2c5282;">40%</div>
+                        <div style="color: #4a5568; margin-top: 5px;">At kickoff</div>
+                        <div style="color: #718096; font-size: 0.9em;">$50,000</div>
+                    </div>
+                    <div style="border-left: 1px solid #cbd5e0; border-right: 1px solid #cbd5e0;">
+                        <div style="font-size: 1.8em; font-weight: 700; color: #2c5282;">30%</div>
+                        <div style="color: #4a5568; margin-top: 5px;">Week 3 milestone</div>
+                        <div style="color: #718096; font-size: 0.9em;">$37,500</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 1.8em; font-weight: 700; color: #2c5282;">30%</div>
+                        <div style="color: #4a5568; margin-top: 5px;">Final delivery</div>
+                        <div style="color: #718096; font-size: 0.9em;">$37,500</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pricing-includes">
+                <h3>What's Included (Everything)</h3>
+                <ul>
+                    <li>All 6 platform modules (fully functional)</li>
+                    <li>Complete source code ownership</li>
+                    <li>Web application (desktop + mobile responsive)</li>
+                    <li>Native mobile apps (iOS + Android)</li>
+                    <li>Integration with your PMS, accounting, all systems</li>
+                    <li>AI/ML models trained on your portfolio data</li>
+                    <li>Policy engine with your documents ingested</li>
+                    <li>Workflow automation configured to your rules</li>
+                    <li>Admin panel for ongoing configuration</li>
+                    <li>Unlimited users across your organization</li>
+                    <li>Unlimited properties/portfolios</li>
+                    <li>30 days post-launch bug fixes included</li>
+                    <li>Live training sessions for your team</li>
+                    <li>Comprehensive documentation + video tutorials</li>
+                    <li>Security hardening and penetration testing</li>
+                    <li>Deployment on your infrastructure</li>
+                </ul>
+            </div>
+
+            <div style="margin-top: 40px; padding-top: 30px; border-top: 2px solid #e2e8f0;">
+                <h4 style="font-size: 1.4em; color: #2d3748; margin-bottom: 20px; text-align: center;">Ongoing Costs (Optional)</h4>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; text-align: center;">
+                    <div>
+                        <div style="font-size: 1.1em; color: #718096; margin-bottom: 8px;">Hosting & Infrastructure</div>
+                        <div style="font-size: 2em; font-weight: 700; color: #2c5282;">$500/mo</div>
+                    </div>
+                    <div style="border-left: 1px solid #cbd5e0; border-right: 1px solid #cbd5e0;">
+                        <div style="font-size: 1.1em; color: #718096; margin-bottom: 8px;">AI Credits (GPT-4, ML)</div>
+                        <div style="font-size: 2em; font-weight: 700; color: #2c5282;">$300/mo</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 1.1em; color: #718096; margin-bottom: 8px;">Support & Updates</div>
+                        <div style="font-size: 2em; font-weight: 700; color: #2c5282;">$200/mo</div>
+                    </div>
+                </div>
+                <div style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #cbd5e0;">
+                    <div style="color: #4a5568; margin-bottom: 5px;">Total Monthly Operating Cost</div>
+                    <div style="font-size: 2.5em; font-weight: 700; color: #2c5282;">$1,000/month</div>
+                    <div style="color: #718096; font-size: 0.95em; margin-top: 10px;">Less than one regional manager costs you monthly</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-section">
+        <h2>Let's Build Your Strategic Asset</h2>
+        <p>Stop managing operations. Start leading your business. Your custom platform is 6 weeks away.</p>
+        <a href="mailto:aryn@example.com?subject=Let's Discuss My Custom Asset Management Platform" class="cta-button">Schedule Your Discovery Call</a>
+        <div style="margin-top: 40px; font-size: 1.2em; color: #4a5568;">
+            Or call/text to discuss: <strong style="color: #2c5282;">[Your Phone Number]</strong>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+        <p style="font-size: 1.3em; margin-bottom: 15px;"><strong>Aryn Thomez</strong></p>
+        <p>Property Management Technology Consultant</p>
+        <p style="margin-top: 10px;">Custom AI Platform Development for Real Estate Asset Owners</p>
+        <p style="margin-top: 20px; opacity: 0.7;">aryn@example.com • [Your Phone] • November 2025</p>
+    </div>
+
+</body>
+</html>
