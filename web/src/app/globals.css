@@ -13,7 +13,9 @@
   }
   
   body {
-    @apply text-black antialiased;
+    color: #000;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     background-color: var(--color-bg);
     margin: 0;
     padding: 0;
