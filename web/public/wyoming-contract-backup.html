@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wyoming Asset Protection Trust - Master Services Agreement & Scope of Work</title>
+    <style>
+        @media print {
+            .no-print { display: none; }
+            body { margin: 0; }
+        }
+        
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            line-height: 1.6;
+            color: #000;
+            max-width: 8.5in;
+            margin: 0 auto;
+            padding: 1in;
+            background: white;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #000;
+        }
+        
+        .header img {
+            max-width: 200px;
+            margin-bottom: 1rem;
+        }
+        
+        h1 {
+            font-size: 18pt;
+            font-weight: bold;
+            margin: 1rem 0;
+            text-align: center;
+        }
+        
+        h2 {
+            font-size: 14pt;
+            font-weight: bold;
+            margin: 1.5rem 0 0.5rem 0;
+            page-break-after: avoid;
+        }
+        
+        h3 {
+            font-size: 12pt;
+            font-weight: bold;
+            margin: 1rem 0 0.5rem 0;
+        }
+        
+        p {
+            margin: 0.5rem 0;
+            text-align: justify;
+        }
+        
+        .section {
+            margin: 1.5rem 0;
+            page-break-inside: avoid;
+        }
+        
+        ul, ol {
+            margin: 0.5rem 0 0.5rem 2rem;
+        }
+        
+        li {
+            margin: 0.25rem 0;
+        }
+        
+        .signature-block {
+            margin-top: 3rem;
+            page-break-inside: avoid;
+        }
+        
+        .signature-line {
+            margin: 2rem 0;
+        }
+        
+        .signature-line strong {
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+        
+        .underline {
+            border-bottom: 1px solid #000;
+            display: inline-block;
+            min-width: 300px;
+        }
+        
+        .page-break {
+            page-break-before: always;
+        }
+        
+        .download-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #0F766E;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            cursor: pointer;
+            border: none;
+            font-size: 14px;
+        }
+        
+        .download-btn:hover {
+            background: #0D5D57;
+        }
+    </style>
+</head>
+<body>
+    <button class="download-btn no-print" onclick="window.print()">Download PDF</button>
+
+    <div class="header">
+        <img src="nbrain-2025-logo.png" alt="nBrain" />
+    </div>
+
+    <h1>Scope of Work for Wyoming Asset Protection Trust Platform (SOW)</h1>
+    
+    <p>This SOW is issued pursuant to the terms and conditions of the Master Services Agreement between nBrain AI, LLC ("Company") and <strong>Wyoming Asset Protection Trust / Meuli & Associates</strong> ("Client").</p>
+    
+    <div class="section">
+        <h2>Scope Of Work (Exhibit A)</h2>
+        <p>This Statement of Work ("SOW") outlines the services and deliverables for the design, development, and deployment of a <strong>Custom Legal Technology Platform</strong> consisting of integrated modules for client portal management, matter management CRM, document assembly, compliance monitoring, and AI-powered automation for Wyoming Asset Protection Trust legal practice.</p>
+    </div>
+
+    <div class="section">
+        <h2>Summary</h2>
+        <p>Wyoming Asset Protection Trust (WAPA), a specialized legal practice focused on Wyoming asset protection trusts, LLC formations, and estate planning services, requires a custom technology platform to scale operations while maintaining white-glove client service. The practice currently relies on a beneficial partnership with CompanySage for registered agent services and generates 4-12 asset protection trust leads per month through WyomingLLCAttorney.com referrals, but lacks control over the client experience and operational automation.</p>
+        
+        <p>Critical pain points include: (1) no white-label client portal resulting in clients seeing third-party branding, (2) manual entity expiration monitoring leading to missed renewal deadlines, (3) complex questionnaires requiring 30-minute discovery calls for each client intake, (4) no centralized document assembly causing inconsistent document generation, and (5) no proactive client communication or compliance management system.</p>
+        
+        <p>The proposed platform will serve as WAPA's integrated legal practice management system that syncs with CompanySage data via API while providing complete control over client experience. The system will automate document generation, monitor compliance deadlines through AI-powered agents, streamline client intake, manage matters and workflows, and enable personalized client communications at scale. This positions WAPA to maintain the beneficial CompanySage partnership while building a sellable business asset and eventual pathway to vertical integration as their own registered agent when strategically appropriate.</p>
+    </div>
+
+    <div class="section">
+        <h2>Project Deliverables</h2>
+        
+        <h3>1. Client Portal & Dashboard (White-Label Interface)</h3>
+        <ul>
+            <li><strong>Vue.js Frontend Application:</strong>
+                <ul>
+                    <li>Responsive web application using Owen's existing Vue.js component library</li>
+                    <li>Nuxt Hub framework for server-side rendering and SEO optimization</li>
+                    <li>Complete WAPA branding (no CompanySage or third-party visibility to clients)</li>
+                    <li>Mobile-responsive design for desktop, tablet, and smartphone access</li>
+                    <li>Secure authentication and role-based access control</li>
+                </ul>
+            </li>
+            
+            <li><strong>Entity Status & Management:</strong>
+                <ul>
+                    <li>Real-time synchronization with CompanySage API for entity data</li>
+                    <li>Dashboard view of all client entities (trusts, LLCs, holding companies)</li>
+                    <li>Entity formation status tracking with visual progress indicators</li>
+                    <li>Renewal date visibility and automated expiration warnings</li>
+                    <li>Registered agent status and contact information display</li>
+                    <li>Wyoming physical address and phone number assignments</li>
+                </ul>
+            </li>
+            
+            <li><strong>Document Vault & Repository:</strong>
+                <ul>
+                    <li>Secure document storage for corporate documents, trust documents, operating agreements</li>
+                    <li>Organized by entity and matter type with search functionality</li>
+                    <li>Version control for document updates and amendments</li>
+                    <li>Download and print capabilities for all documents</li>
+                    <li>E-signature integration for client document execution</li>
+                    <li>Automatic email notifications when new documents are added</li>
+                </ul>
+            </li>
+            
+            <li><strong>Billing & Payment Transparency:</strong>
+                <ul>
+                    <li>Clear breakdown of all charges (setup fees, maintenance fees, RA fees, address fees)</li>
+                    <li>Payment history and receipt access</li>
+                    <li>LawPay integration for secure online payments</li>
+                    <li>Upcoming billing date visibility and automated reminders</li>
+                    <li>Invoice generation and downloadable PDFs</li>
+                </ul>
+            </li>
+            
+            <li><strong>Service Add-Ons & Upsells:</strong>
+                <ul>
+                    <li>One-click ordering for additional LLC formations</li>
+                    <li>Bank account setup assistance request forms</li>
+                    <li>Trust amendment request workflows</li>
+                    <li>Additional entity formation wizard</li>
+                    <li>Maintenance package upgrade options</li>
+                </ul>
+            </li>
+            
+            <li><strong>Appointment Scheduling & Communication:</strong>
+                <ul>
+                    <li>Calendly integration for booking attorney consultations</li>
+                    <li>Secure messaging system for client-attorney communication</li>
+                    <li>Automated appointment reminders via email and SMS</li>
+                    <li>Communication history and thread tracking</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h3>2. Legal Operations Center (LOC) - Compliance Monitoring Dashboard</h3>
+        <ul>
+            <li><strong>NOC-Style Operations Dashboard:</strong>
+                <ul>
+                    <li>Red/Yellow/Green status indicators for all client entities</li>
+                    <li>Waterfall feed showing items requiring immediate attention</li>
+                    <li>Priority sorting with urgent items at top of queue</li>
+                    <li>Drill-down capabilities for detailed entity information</li>
+                    <li>Staff assignment and task delegation features</li>
+                    <li>Multi-client view without needing to access individual accounts</li>
+                </ul>
+            </li>
+            
+            <li><strong>Automated Compliance Monitoring:</strong>
+                <ul>
+                    <li>Daily automated scraping of Wyoming Secretary of State database for entity status</li>
+                    <li>Multi-state entity monitoring for clients with entities beyond Wyoming</li>
+                    <li>Registered agent renewal tracking (annual deadlines)</li>
+                    <li>Physical address lease expiration monitoring (Mark Pierce leases)</li>
+                    <li>Wyoming phone number renewal deadline tracking</li>
+                    <li>Bank account status monitoring and annual review reminders</li>
+                </ul>
+            </li>
+            
+            <li><strong>Proactive Alert System:</strong>
+                <ul>
+                    <li>Email alerts to staff at 60, 30, and 7 days before deadlines</li>
+                    <li>SMS notifications for urgent items requiring immediate attention</li>
+                    <li>Escalation workflows if alerts are not acknowledged</li>
+                    <li>Client notification drafting with personalized renewal instructions</li>
+                    <li>Automatic task creation in staff workflow queues</li>
+                </ul>
+            </li>
+            
+            <li><strong>Deadline Calculation Engine:</strong>
+                <ul>
+                    <li>Annual renewal date tracking for all entity types</li>
+                    <li>Quarterly maintenance check-in scheduling</li>
+                    <li>Trust contribution affidavit reminder intervals</li>
+                    <li>Corporate minutes generation deadlines (monthly or quarterly)</li>
+                    <li>Custom deadline setting for client-specific requirements</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h3>3. Matter Management CRM (Legal Practice-Specific)</h3>
+        <ul>
+            <li><strong>Client Lifecycle Management:</strong>
+                <ul>
+                    <li>Lead stage tracking (inquiry, prospect, consultation scheduled)</li>
+                    <li>Active client management (engagement, formation in progress, completed)</li>
+                    <li>Maintenance client tracking (annual renewals, ongoing compliance)</li>
+                    <li>Inactive client detection and re-engagement workflows</li>
+                    <li>Client source attribution (WyomingLLCAttorney referral, direct inquiry, etc.)</li>
+                </ul>
+            </li>
+            
+            <li><strong>Matter-Based Organization:</strong>
+                <ul>
+                    <li>Each trust, entity formation, or service tracked as individual matter</li>
+                    <li>Matter types: Asset Protection Trust, Private Family Trust Company, LLC Formation, Holding Company, Operating Company, Trust Amendment</li>
+                    <li>Matter status tracking with visual workflow progress</li>
+                    <li>All documents, communications, and tasks tied to specific matters</li>
+                    <li>Matter-based time tracking and billing integration</li>
+                </ul>
+            </li>
+            
+            <li><strong>Automated Workflow Checklists:</strong>
+                <ul>
+                    <li>Predefined checklists for each matter type (e.g., LLC Formation: Intake → Document Prep → Filing → EIN → Delivery)</li>
+                    <li>Automatic task creation when matter is opened</li>
+                    <li>Checklist completion tracking with percentage progress</li>
+                    <li>Staff assignment for specific checklist items</li>
+                    <li>Due date calculations based on matter type and urgency</li>
+                </ul>
+            </li>
+            
+            <li><strong>Internal Collaboration Tools:</strong>
+                <ul>
+                    <li>Internal notes and comments on client records (not visible to clients)</li>
+                    <li>Task assignment to specific team members (Matt, Owen, staff)</li>
+                    <li>Deadline tracking and overdue task alerts</li>
+                    <li>Email thread integration for complete communication history</li>
+                    <li>File attachments and document associations</li>
+                </ul>
+            </li>
+            
+            <li><strong>LawPay Billing Integration:</strong>
+                <ul>
+                    <li>Matter-based billing with time and expense tracking</li>
+                    <li>Trust account compliance and IOLTA handling</li>
+                    <li>Invoice generation tied to specific matters</li>
+                    <li>Payment receipt processing and automatic application to matters</li>
+                    <li>Recurring billing setup for annual maintenance programs</li>
+                </ul>
+            </li>
+            
+            <li><strong>Reporting & Analytics Dashboards:</strong>
+                <ul>
+                    <li>Revenue reporting by matter type, client, and time period</li>
+                    <li>Matter status overview (how many active, pending, completed)</li>
+                    <li>Client acquisition cost analysis</li>
+                    <li>Staff productivity and workload distribution</li>
+                    <li>Average time-to-close by matter type</li>
+                    <li>Client lifetime value calculations</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h3>4. Document Assembly & Template System</h3>
+        <ul>
+            <li><strong>Handlebars Template Engine:</strong>
+                <ul>
+                    <li>All legal document templates converted to Handlebars format</li>
+                    <li>Consistent variable naming convention ({{client_name}}, {{trust_name}}, {{llc_name}}, etc.)</li>
+                    <li>Industry-standard template syntax for reliability and AI readability</li>
+                    <li>Conditional logic for different entity structures and options</li>
+                    <li>Loop functionality for variable numbers of beneficiaries, managers, etc.</li>
+                </ul>
+            </li>
+            
+            <li><strong>Document Types Covered:</strong>
+                <ul>
+                    <li>Engagement letters (with new 5-service add-ons)</li>
+                    <li>Wyoming Asset Protection Trust documents</li>
+                    <li>Private Family Trust Company formation documents</li>
+                    <li>LLC Operating Agreements (single-member, multi-member, holding, operating)</li>
+                    <li>Stock assignment and interest assignment documents</li>
+                    <li>Trust contribution affidavits</li>
+                    <li>Corporate minutes templates</li>
+                    <li>Four lease agreements for Wyoming physical address</li>
+                    <li>EIN application assistance documents</li>
+                </ul>
+            </li>
+            
+            <li><strong>Multi-Document Generation:</strong>
+                <ul>
+                    <li>Single client intake populates all related documents</li>
+                    <li>Trust + Holding LLC + Operating LLC generated in one workflow</li>
+                    <li>Consistent entity naming across all documents (no manual re-entry)</li>
+                    <li>Manager and member information synchronized across all documents</li>
+                    <li>Physical addresses and contact information auto-populated</li>
+                </ul>
+            </li>
+            
+            <li><strong>Validation & Error Checking:</strong>
+                <ul>
+                    <li>Missing information detection before document generation</li>
+                    <li>Inconsistent data flagging (e.g., mismatched entity names)</li>
+                    <li>Compliance requirement checking based on entity type</li>
+                    <li>Attorney review queue for final approval before client delivery</li>
+                    <li>Red-flag alerts for unusual or high-risk configurations</li>
+                </ul>
+            </li>
+            
+            <li><strong>Version Control & Template Management:</strong>
+                <ul>
+                    <li>Template library with categorization and search</li>
+                    <li>Version history for all template updates</li>
+                    <li>Bulk template updates when Wyoming statutes change</li>
+                    <li>Template cloning for creating variations</li>
+                    <li>Archive functionality for deprecated templates</li>
+                </ul>
+            </li>
+            
+            <li><strong>PDF Generation & E-Signature:</strong>
+                <ul>
+                    <li>Professional PDF generation from completed templates</li>
+                    <li>E-signature workflow integration for client execution</li>
+                    <li>Multi-party signature routing (client, attorney, witnesses)</li>
+                    <li>Automatic document vault storage upon completion</li>
+                    <li>Email notifications to all parties when signatures are needed</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h3>5. Intelligent Client Intake System</h3>
+        <ul>
+            <li><strong>Conversational Intake Interface:</strong>
+                <ul>
+                    <li>Chat-based questionnaire instead of static forms</li>
+                    <li>Progressive disclosure (only ask relevant follow-up questions)</li>
+                    <li>Natural language input with validation and formatting</li>
+                    <li>Save-and-resume functionality for multi-session completion</li>
+                    <li>Mobile-friendly interface for on-the-go completion</li>
+                </ul>
+            </li>
+            
+            <li><strong>AI-Powered Explanations:</strong>
+                <ul>
+                    <li>Context-aware help for legal terminology</li>
+                    <li>Plain-English explanations when clients encounter confusing questions</li>
+                    <li>Examples provided for complex concepts (e.g., "health, education, maintenance" with real scenarios)</li>
+                    <li>Tooltips and expandable help sections</li>
+                    <li>Video explanations for particularly complex sections (optional future enhancement)</li>
+                </ul>
+            </li>
+            
+            <li><strong>Automatic Document Pre-Population:</strong>
+                <ul>
+                    <li>All questionnaire responses mapped to document template variables</li>
+                    <li>Data validation during intake (email format, phone format, address validation)</li>
+                    <li>Duplicate data entry elimination (enter once, use everywhere)</li>
+                    <li>CRM integration for client record creation and updating</li>
+                </ul>
+            </li>
+            
+            <li><strong>Attorney Review Queue:</strong>
+                <ul>
+                    <li>Incomplete responses flagged for attorney follow-up</li>
+                    <li>Ambiguous answers highlighted for clarification</li>
+                    <li>Items requiring professional judgment routed to attorney</li>
+                    <li>Discovery call preparation summary with completed vs. pending items</li>
+                </ul>
+            </li>
+            
+            <li><strong>Discovery Call Reduction:</strong>
+                <ul>
+                    <li>Goal: Reduce or eliminate need for 30-minute discovery calls</li>
+                    <li>If discovery call still needed, attorney receives comprehensive prep summary</li>
+                    <li>Pre-call document generation for attorney review during call</li>
+                    <li>Real-time intake updates during call if needed</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h3>6. Email & Communication Automation</h3>
+        <ul>
+            <li><strong>Behavioral Email Sequences:</strong>
+                <ul>
+                    <li>Welcome sequence for new leads from WyomingLLCAttorney referrals</li>
+                    <li>Post-consultation follow-up sequences</li>
+                    <li>Document completion reminder sequences</li>
+                    <li>Annual maintenance renewal sequences (60, 30, 7 days before)</li>
+                    <li>Inactive client re-engagement sequences (6+ months no activity)</li>
+                </ul>
+            </li>
+            
+            <li><strong>Interest Graph & Content Matching:</strong>
+                <ul>
+                    <li>Client interest modeling based on services purchased and content consumed</li>
+                    <li>Relevant article/video delivery based on client entity structure</li>
+                    <li>Educational content for trust contribution requirements</li>
+                    <li>Targeted messaging based on property holdings (real estate vs. business)</li>
+                </ul>
+            </li>
+            
+            <li><strong>Lifecycle-Based Messaging:</strong>
+                <ul>
+                    <li>Different content tracks for prospects vs. active clients vs. maintenance clients</li>
+                    <li>Trust client messaging (contribution reminders, compliance education)</li>
+                    <li>LLC client messaging (renewal reminders, expansion opportunities)</li>
+                    <li>Holding company client messaging (asset protection strategies)</li>
+                </ul>
+            </li>
+            
+            <li><strong>A/B Testing & Optimization:</strong>
+                <ul>
+                    <li>Subject line testing for improved open rates</li>
+                    <li>Send time optimization based on client behavior</li>
+                    <li>Content variation testing for engagement</li>
+                    <li>Call-to-action optimization (book call, download resource, etc.)</li>
+                </ul>
+            </li>
+            
+            <li><strong>Conversion Tracking & Attribution:</strong>
+                <ul>
+                    <li>Track which emails drive portal logins</li>
+                    <li>Measure which content generates additional service purchases</li>
+                    <li>Identify successful messaging for replication</li>
+                    <li>ROI measurement on email marketing efforts</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h3>7. Content Management System (Strapi Headless CMS)</h3>
+        <ul>
+            <li><strong>Strapi CMS Setup & Configuration:</strong>
+                <ul>
+                    <li>Self-hosted Strapi instance on Render infrastructure</li>
+                    <li>Content type modeling for pages, blog posts, service descriptions, FAQs</li>
+                    <li>Media library for images, PDFs, and downloadable resources</li>
+                    <li>User roles and permissions for content editors vs. administrators</li>
+                    <li>JSON API for frontend consumption</li>
+                </ul>
+            </li>
+            
+            <li><strong>Landing Page Builder:</strong>
+                <ul>
+                    <li>Template-based landing page creation</li>
+                    <li>Service page templates (Asset Protection Trusts, LLC Formations, Maintenance Programs)</li>
+                    <li>Lead capture form integration with CRM</li>
+                    <li>SEO optimization (meta tags, structured data, sitemaps)</li>
+                    <li>Mobile-responsive design system</li>
+                </ul>
+            </li>
+            
+            <li><strong>Blog & Article Publishing:</strong>
+                <ul>
+                    <li>Article management interface for educational content</li>
+                    <li>Category and tag organization</li>
+                    <li>Author attribution and bio sections</li>
+                    <li>Related article recommendations</li>
+                    <li>Social sharing integration</li>
+                </ul>
+            </li>
+            
+            <li><strong>Vue.js Component Integration:</strong>
+                <ul>
+                    <li>Owen's existing Vue.js component library integration</li>
+                    <li>Rich text rendering for Strapi content</li>
+                    <li>Custom page components for unique layouts</li>
+                    <li>Reusable UI elements across marketing and portal</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h3>8. API Integration Layer</h3>
+        <ul>
+            <li><strong>CompanySage API Integration:</strong>
+                <ul>
+                    <li>Real-time entity data synchronization (formation status, renewal dates, etc.)</li>
+                    <li>Registered agent status and assignment management</li>
+                    <li>Corporate document repository access</li>
+                    <li>Billing and payment data sync</li>
+                    <li>Webhook listeners for instant updates (entity filed, renewal processed, etc.)</li>
+                    <li>Conflict resolution logic for data discrepancies</li>
+                    <li>Failover handling for API downtime (cached data display)</li>
+                </ul>
+            </li>
+            
+            <li><strong>Wyoming LLC Attorney API Integration:</strong>
+                <ul>
+                    <li>Lead tracking from Advantage Partner Program</li>
+                    <li>Automatic CRM entry for referred clients</li>
+                    <li>Service package mapping from referral source</li>
+                    <li>Affiliate commission tracking and reporting</li>
+                    <li>Client handoff workflow automation</li>
+                </ul>
+            </li>
+            
+            <li><strong>LawPay Payment Processing API:</strong>
+                <ul>
+                    <li>Integrated payment forms in client portal</li>
+                    <li>Trust account compliance and IOLTA handling</li>
+                    <li>One-time and recurring payment setup</li>
+                    <li>Payment receipt generation and email delivery</li>
+                    <li>Failed payment handling and retry logic</li>
+                </ul>
+            </li>
+            
+            <li><strong>Twilio Communications API:</strong>
+                <ul>
+                    <li>SMS sending for appointment reminders and deadline alerts</li>
+                    <li>Two-way SMS handling for client responses</li>
+                    <li>Bulk SMS campaigns for announcements</li>
+                    <li>Message delivery tracking and analytics</li>
+                    <li>Wyoming phone number provisioning (future enhancement)</li>
+                </ul>
+            </li>
+            
+            <li><strong>Email Service Provider API:</strong>
+                <ul>
+                    <li>Transactional email delivery (confirmations, notifications)</li>
+                    <li>Marketing email campaigns and sequences</li>
+                    <li>Email deliverability optimization and monitoring</li>
+                    <li>Open and click tracking</li>
+                    <li>Bounce and complaint handling</li>
+                </ul>
+            </li>
+            
+            <li><strong>Calendly Scheduling API:</strong>
+                <ul>
+                    <li>Appointment booking integration</li>
+                    <li>Calendar availability synchronization</li>
+                    <li>Automatic calendar invites and reminders</li>
+                    <li>Rescheduling and cancellation workflows</li>
+                    <li>CRM integration for appointment history</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h3>9. AI Oracle Agent (Proactive Intelligence)</h3>
+        <ul>
+            <li><strong>Email Communication Analysis:</strong>
+                <ul>
+                    <li>Full email thread ingestion and natural language processing</li>
+                    <li>Life event detection (new business, property purchase, family changes)</li>
+                    <li>Opportunity identification (mentions of new LLCs, trust amendments, etc.)</li>
+                    <li>At-risk client detection (frustration, confusion, dissatisfaction signals)</li>
+                    <li>Question clustering for FAQ development</li>
+                </ul>
+            </li>
+            
+            <li><strong>Client Behavior Tracking:</strong>
+                <ul>
+                    <li>Portal login frequency and recency tracking</li>
+                    <li>Document view and download patterns</li>
+                    <li>Payment history and payment timeliness</li>
+                    <li>Service purchase history and upsell opportunities</li>
+                    <li>Email engagement (opens, clicks, replies)</li>
+                </ul>
+            </li>
+            
+            <li><strong>Opportunity Scoring & Prioritization:</strong>
+                <ul>
+                    <li>Client lifetime value calculations</li>
+                    <li>Upsell opportunity scoring (likely to purchase additional services)</li>
+                    <li>Referral potential identification (satisfied clients with networks)</li>
+                    <li>Re-engagement priority for inactive clients</li>
+                    <li>Staff assignment recommendations based on client needs</li>
+                </ul>
+            </li>
+            
+            <li><strong>Personalized Outreach Recommendations:</strong>
+                <ul>
+                    <li>AI-drafted email templates based on client history and interests</li>
+                    <li>Suggested talking points for attorney calls</li>
+                    <li>Content recommendations relevant to client situation</li>
+                    <li>Optimal outreach timing based on client behavior patterns</li>
+                </ul>
+            </li>
+            
+            <li><strong>Compliance Deadline Intelligence:</strong>
+                <ul>
+                    <li>Entity expiration prediction based on formation dates</li>
+                    <li>Registered agent renewal forecasting</li>
+                    <li>Trust contribution reminder interval optimization</li>
+                    <li>Corporate minutes generation scheduling</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h3>10. Automated Corporate Minutes & Affidavit Generator</h3>
+        <ul>
+            <li><strong>Scheduled Client Check-Ins:</strong>
+                <ul>
+                    <li>Monthly or quarterly automated questionnaires via email/SMS</li>
+                    <li>Simple conversational questions: "Did you take any loans this month?", "Did you hire anyone?", "Did you make distributions?"</li>
+                    <li>Natural language response processing (not just yes/no)</li>
+                    <li>Follow-up clarification questions based on initial responses</li>
+                </ul>
+            </li>
+            
+            <li><strong>Automated Minute Generation:</strong>
+                <ul>
+                    <li>LLM-powered conversion of client responses to properly formatted corporate minutes</li>
+                    <li>Template selection based on entity type (LLC, corporation, trust)</li>
+                    <li>Compliance with Wyoming statutory requirements</li>
+                    <li>Professional legal formatting and language</li>
+                </ul>
+            </li>
+            
+            <li><strong>Trust Contribution Affidavit Guidance:</strong>
+                <ul>
+                    <li>Conversational interface for contribution reporting</li>
+                    <li>AI explanations of "health, education, maintenance, support" classifications</li>
+                    <li>Real-world examples for each classification type</li>
+                    <li>Automatic affidavit generation from client responses</li>
+                    <li>Attorney review queue before client e-signature</li>
+                </ul>
+            </li>
+            
+            <li><strong>Historical Audit Trail:</strong>
+                <ul>
+                    <li>Complete record of all corporate actions by entity and date</li>
+                    <li>Searchable archive for compliance verification</li>
+                    <li>Export capabilities for legal proceedings if needed</li>
+                    <li>Version control for amended or corrected minutes</li>
+                </ul>
+            </li>
+            
+            <li><strong>Attorney Approval Workflow:</strong>
+                <ul>
+                    <li>All AI-generated documents routed to Matt for review</li>
+                    <li>Edit and correction capabilities before finalization</li>
+                    <li>Approval tracking and digital signature</li>
+                    <li>Client e-signature workflow upon attorney approval</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h3>11. Infrastructure, Security & Deployment</h3>
+        <ul>
+            <li><strong>Hosting Environment (Render):</strong>
+                <ul>
+                    <li>Production environment for live client access</li>
+                    <li>Staging environment for testing updates before deployment</li>
+                    <li>Auto-scaling for traffic spikes and growth</li>
+                    <li>Automated SSL certificate provisioning and renewal</li>
+                    <li>Custom domain setup (yourtrustedplanner.com or preferred domain)</li>
+                    <li>99.9% uptime SLA with health monitoring</li>
+                </ul>
+            </li>
+            
+            <li><strong>PostgreSQL Database:</strong>
+                <ul>
+                    <li>Managed PostgreSQL instance with automated daily backups</li>
+                    <li>Point-in-time recovery capability</li>
+                    <li>Encryption at rest for all client data</li>
+                    <li>Connection pooling for performance optimization</li>
+                    <li>Database indexing strategy for query performance</li>
+                </ul>
+            </li>
+            
+            <li><strong>Pinecone Vector Database:</strong>
+                <ul>
+                    <li>Managed vector database for AI/RAG implementations</li>
+                    <li>Document embedding storage for semantic search</li>
+                    <li>Knowledge base vectorization for chatbots and AI features</li>
+                    <li>Low-latency retrieval for real-time AI responses</li>
+                </ul>
+            </li>
+            
+            <li><strong>GitHub Organization & Version Control:</strong>
+                <ul>
+                    <li>Private GitHub organization for yourtrustedplanner.com</li>
+                    <li>Separate repositories for frontend, backend, CMS, and infrastructure</li>
+                    <li>Branching strategy (main, staging, development)</li>
+                    <li>Pull request workflow for code review</li>
+                    <li>Automated CI/CD pipelines for deployment</li>
+                    <li>Code documentation and README files</li>
+                </ul>
+            </li>
+            
+            <li><strong>Security & Compliance:</strong>
+                <ul>
+                    <li>End-to-end encryption for all data transmission (TLS 1.3)</li>
+                    <li>Encryption at rest for database and file storage</li>
+                    <li>Role-based access control (RBAC) for users and staff</li>
+                    <li>Two-factor authentication (2FA) for admin accounts</li>
+                    <li>Activity logging and audit trails</li>
+                    <li>HIPAA-level security controls for client confidentiality</li>
+                    <li>Regular security updates and dependency patching</li>
+                    <li>Penetration testing and vulnerability scanning (optional add-on)</li>
+                </ul>
+            </li>
+            
+            <li><strong>Monitoring & Performance:</strong>
+                <ul>
+                    <li>Application performance monitoring (APM)</li>
+                    <li>Error tracking and alerting</li>
+                    <li>Uptime monitoring with SMS/email alerts</li>
+                    <li>Database query performance monitoring</li>
+                    <li>API rate limiting and throttling</li>
+                    <li>Log aggregation and search</li>
+                </ul>
+            </li>
+        </ul>
+        
+        <h3>12. Documentation, Training & Support</h3>
+        <ul>
+            <li><strong>System Documentation:</strong>
+                <ul>
+                    <li>Technical architecture documentation</li>
+                    <li>API documentation with endpoint descriptions and examples</li>
+                    <li>Database schema documentation</li>
+                    <li>Deployment and configuration guides</li>
+                    <li>Environment variable and secrets management documentation</li>
+                </ul>
+            </li>
+            
+            <li><strong>User Guides & Tutorials:</strong>
+                <ul>
+                    <li>Client portal user guide (for end clients)</li>
+                    <li>Attorney/staff training manual</li>
+                    <li>CRM workflow documentation</li>
+                    <li>Document template creation and editing guide</li>
+                    <li>Email campaign creation tutorials</li>
+                    <li>Legal Operations Center dashboard guide</li>
+                </ul>
+            </li>
+            
+            <li><strong>Video Training Sessions:</strong>
+                <ul>
+                    <li>Platform overview and navigation</li>
+                    <li>Client onboarding walkthrough</li>
+                    <li>Matter creation and management</li>
+                    <li>Document generation workflows</li>
+                    <li>Email automation setup</li>
+                    <li>Compliance monitoring dashboard usage</li>
+                </ul>
+            </li>
+            
+            <li><strong>Post-Launch Support (30 Days):</strong>
+                <ul>
+                    <li>Dedicated support channel (Slack or email)</li>
+                    <li>Bug fixes and issue resolution</li>
+                    <li>Performance optimization</li>
+                    <li>User feedback incorporation</li>
+                    <li>Q&A sessions for staff questions</li>
+                    <li>Minor feature adjustments based on real-world usage</li>
+                </ul>
+            </li>
+        </ul>
+    </div>
+
+    <div class="section page-break">
+        <h2>Development Timeline</h2>
+        
+        <p><strong>Total Duration:</strong> 9 weeks from contract signing to production launch</p>
+        
+        <h3>Weeks 1-2: Foundation & Architecture</h3>
+        <ul>
+            <li>Database schema design and PostgreSQL setup</li>
+            <li>API architecture planning and initial backend scaffolding</li>
+            <li>GitHub organization creation and repository setup</li>
+            <li>Strapi CMS installation and configuration</li>
+            <li>Render hosting environment provisioning (staging and production)</li>
+            <li>Owen's Vue.js component library review and integration planning</li>
+            <li>CompanySage API documentation review and integration planning</li>
+        </ul>
+        
+        <h3>Weeks 3-4: Core Platform Development</h3>
+        <ul>
+            <li>Client portal UI development (entity dashboard, document vault, billing)</li>
+            <li>Matter management CRM backend and frontend</li>
+            <li>Document template system (Handlebars conversion of existing templates)</li>
+            <li>CompanySage API integration for entity data synchronization</li>
+            <li>LawPay payment processing integration</li>
+            <li>Basic authentication and role-based access control</li>
+        </ul>
+        
+        <h3>Weeks 5-6: AI & Automation Features</h3>
+        <ul>
+            <li>Legal Operations Center (LOC) compliance monitoring dashboard</li>
+            <li>AI Oracle Agent development (email analysis, opportunity scoring)</li>
+            <li>Email automation system and sequence builder</li>
+            <li>Automated corporate minutes generator</li>
+            <li>Intelligent client intake questionnaire system</li>
+            <li>Pinecone vector database setup for AI features</li>
+        </ul>
+        
+        <h3>Weeks 7-8: Integration, Testing & Refinement</h3>
+        <ul>
+            <li>Twilio SMS integration for communications</li>
+            <li>Calendly scheduling integration</li>
+            <li>Wyoming LLC Attorney API integration for lead tracking</li>
+            <li>End-to-end workflow testing (lead to client to maintenance)</li>
+            <li>Security audit and penetration testing</li>
+            <li>Performance optimization and load testing</li>
+            <li>Bug fixes and refinements</li>
+        </ul>
+        
+        <h3>Week 9: Launch, Training & Handoff</h3>
+        <ul>
+            <li>Production deployment and DNS configuration</li>
+            <li>Data migration (existing client import if applicable)</li>
+            <li>Staff training sessions (Matt, Owen, team)</li>
+            <li>Documentation handoff and video tutorials</li>
+            <li>Go-live monitoring and support</li>
+            <li>Post-launch optimization based on initial usage</li>
+        </ul>
+    </div>
+
+    <div class="section page-break">
+        <h2>Investment & Payment Terms</h2>
+        
+        <div style="background: #f3f4f6; padding: 2rem; border-radius: 8px; margin: 2rem 0;">
+            <h3 style="text-align: center; margin-bottom: 1rem; font-size: 16pt;">One-Time Platform Development</h3>
+            <p style="text-align: center; font-size: 28pt; font-weight: bold; margin: 1rem 0;">$15,000</p>
+            <p style="text-align: center; font-size: 12pt; color: #374151;">Complete Custom Platform Built & Deployed</p>
+        </div>
+        
+        <h3>Payment Schedule</h3>
+        <ul>
+            <li><strong>50% Deposit ($7,500):</strong> Due upon contract signing to begin development</li>
+            <li><strong>50% Final Payment ($7,500):</strong> Due upon production deployment and handoff (Week 9)</li>
+        </ul>
+        
+        <h3>Included in Investment</h3>
+        <ul>
+            <li>All 12 platform modules described in this SOW</li>
+            <li>Custom Vue.js frontend with white-label branding</li>
+            <li>Strapi headless CMS for website and content</li>
+            <li>Matter management CRM with workflow automation</li>
+            <li>Document assembly engine with Handlebars templates</li>
+            <li>Legal Operations Center compliance dashboard</li>
+            <li>AI Oracle Agent for monitoring and opportunity analysis</li>
+            <li>All third-party API integrations (CompanySage, Wyoming LLC Attorney, LawPay, Twilio, Calendly)</li>
+            <li>PostgreSQL database setup and configuration</li>
+            <li>Pinecone vector database for AI features</li>
+            <li>Render hosting environment (staging and production)</li>
+            <li>GitHub organization and repository setup</li>
+            <li>Complete documentation (technical and user guides)</li>
+            <li>Staff training sessions and video tutorials</li>
+            <li>30 days post-launch support and optimization</li>
+        </ul>
+        
+        <h3>Not Included (Client Responsibility)</h3>
+        <ul>
+            <li><strong>Ongoing Hosting & Infrastructure Costs:</strong> Estimated $150-250/month
+                <ul>
+                    <li>Render hosting for web services and database (~$50-100/month)</li>
+                    <li>Pinecone vector database (~$70/month)</li>
+                    <li>Email service provider (~$20-50/month)</li>
+                </ul>
+            </li>
+            <li><strong>Usage-Based Service Costs:</strong> Variable based on volume
+                <ul>
+                    <li>OpenAI API for AI features (~$50-200/month depending on usage)</li>
+                    <li>Twilio SMS and voice (~$0.01-0.02 per message/minute, pay-as-you-go)</li>
+                    <li>LawPay transaction fees (percentage of payments processed)</li>
+                </ul>
+            </li>
+            <li><strong>Domain Registration & SSL:</strong> If not already owned (~$12-50/year)</li>
+            <li><strong>CompanySage API Access:</strong> If applicable (to be determined with CompanySage)</li>
+            <li><strong>Third-Party Account Setup:</strong> Client responsible for creating accounts with LawPay, Twilio, Calendly, email provider (nBrain will assist with configuration)</li>
+        </ul>
+        
+        <h3>Optional Add-Ons (Not Included in Base Price)</h3>
+        <ul>
+            <li><strong>Monthly Retainer for Ongoing Development:</strong> $2,500-5,000/month
+                <ul>
+                    <li>New feature development and enhancements</li>
+                    <li>Continuous optimization and performance improvements</li>
+                    <li>Priority support with faster response times</li>
+                    <li>Dedicated development hours for custom requests</li>
+                </ul>
+            </li>
+            <li><strong>Content Writing Services:</strong> $500-1,500 per article/page
+                <ul>
+                    <li>SEO-optimized blog articles for website</li>
+                    <li>Service page copywriting</li>
+                    <li>Email campaign content creation</li>
+                </ul>
+            </li>
+            <li><strong>Voice AI Assistant (11 Labs Integration):</strong> $3,000-5,000
+                <ul>
+                    <li>24/7 phone-based AI client service</li>
+                    <li>Voice cloning for Matt or Owen</li>
+                    <li>Call routing and escalation workflows</li>
+                    <li>Voicemail transcription and prioritization</li>
+                </ul>
+            </li>
+            <li><strong>Video Avatar Content System (11 Labs):</strong> $3,000-5,000
+                <ul>
+                    <li>AI-generated video content with Matt/Owen avatars</li>
+                    <li>Multiple setting/outfit variations</li>
+                    <li>Social media content automation</li>
+                    <li>Personalized video emails for clients</li>
+                </ul>
+            </li>
+            <li><strong>Advanced Analytics & BI Dashboard:</strong> $2,000-3,000
+                <ul>
+                    <li>Custom reporting dashboards beyond standard analytics</li>
+                    <li>Predictive analytics for revenue forecasting</li>
+                    <li>Client churn prediction modeling</li>
+                    <li>Advanced data visualization</li>
+                </ul>
+            </li>
+        </ul>
+    </div>
+
+    <div class="section page-break">
+        <h2>Assumptions & Client Responsibilities</h2>
+        
+        <h3>Client Will Provide</h3>
+        <ul>
+            <li><strong>Access to CompanySage API:</strong> Client will coordinate with CompanySage (Andrew Pierce) or his technical team to obtain API documentation and credentials</li>
+            <li><strong>Document Templates:</strong> Client will provide current versions of all legal document templates in Google Drive or Word format for conversion to Handlebars</li>
+            <li><strong>Branding Assets:</strong> Logos, color schemes, fonts, and brand guidelines for white-label portal design</li>
+            <li><strong>Third-Party Accounts:</strong> Client will create accounts with LawPay, Twilio, Calendly, and email service provider (nBrain will provide recommendations and assist with setup)</li>
+            <li><strong>Content Input:</strong> Initial website content, service descriptions, attorney bios, FAQ content</li>
+            <li><strong>Testing Participation:</strong> Client staff (Matt, Owen) will participate in UAT (User Acceptance Testing) during Weeks 7-8</li>
+            <li><strong>Timely Feedback:</strong> Client will provide feedback on mockups, prototypes, and features within 48-72 hours to maintain timeline</li>
+        </ul>
+        
+        <h3>nBrain Responsibilities</h3>
+        <ul>
+            <li>Complete platform development as outlined in this SOW</li>
+            <li>Integration with all specified third-party services and APIs</li>
+            <li>Security implementation and best practices</li>
+            <li>Performance optimization and scalability</li>
+            <li>Documentation and training materials</li>
+            <li>Staff training sessions (virtual or in-person if local)</li>
+            <li>Production deployment and go-live support</li>
+            <li>30 days post-launch bug fixes and optimization</li>
+        </ul>
+        
+        <h3>Success Criteria</h3>
+        <p>The platform will be considered successfully delivered when:</p>
+        <ul>
+            <li>All 12 core modules are functional and accessible in production environment</li>
+            <li>CompanySage API integration successfully syncing entity data</li>
+            <li>Document assembly system generating accurate documents from intake forms</li>
+            <li>Legal Operations Center dashboard displaying client compliance status</li>
+            <li>Client portal accessible to end clients with white-label branding</li>
+            <li>Payment processing functional through LawPay</li>
+            <li>Email and SMS automation operational</li>
+            <li>Staff can successfully complete end-to-end workflows (lead to client to maintenance)</li>
+            <li>All documentation and training materials delivered</li>
+            <li>Client staff trained and comfortable using the system</li>
+        </ul>
+    </div>
+
+    <div class="section page-break">
+        <h2>Terms and Conditions</h2>
+        
+        <h3>1. Scope Changes</h3>
+        <p>This SOW represents the agreed-upon scope of work. Any changes, additions, or modifications to the scope will be documented in a written Change Order and may result in additional fees and timeline adjustments. Minor refinements during development that do not materially change functionality are included.</p>
+        
+        <h3>2. Timeline</h3>
+        <p>The 9-week timeline assumes timely client feedback and provision of required materials. Delays in client feedback, access to third-party APIs, or provision of content/assets may extend the timeline accordingly. nBrain will notify Client immediately of any factors that may impact the timeline.</p>
+        
+        <h3>3. Intellectual Property</h3>
+        <p>Upon final payment, Client owns all custom code, designs, and configurations developed specifically for this project. nBrain retains ownership of any proprietary frameworks, libraries, or tools used in development. Client receives perpetual license to use all delivered code and systems.</p>
+        
+        <h3>4. Third-Party Services</h3>
+        <p>Client is responsible for costs associated with third-party services (Render hosting, Pinecone, OpenAI, Twilio, LawPay, etc.). nBrain will provide cost estimates and recommendations but cannot guarantee exact pricing from third-party vendors. Client is responsible for compliance with all third-party terms of service.</p>
+        
+        <h3>5. Support & Maintenance</h3>
+        <p>This SOW includes 30 days of post-launch support for bug fixes and optimization. After 30 days, ongoing support and maintenance are available via monthly retainer ($2,500-5,000/month) or on a time-and-materials basis at nBrain's standard hourly rates.</p>
+        
+        <h3>6. Warranties</h3>
+        <p>nBrain warrants that all delivered software will perform substantially in accordance with this SOW for 30 days post-launch. nBrain does not warrant that the software will be error-free or uninterrupted, but will make commercially reasonable efforts to resolve reported issues.</p>
+        
+        <h3>7. Confidentiality</h3>
+        <p>Both parties agree to maintain confidentiality of all proprietary information, client data, and business processes encountered during this engagement. nBrain will implement industry-standard security practices to protect Client data.</p>
+        
+        <h3>8. Data Security & Privacy</h3>
+        <p>nBrain will implement security best practices including encryption, access controls, and regular backups. Client is responsible for compliance with applicable legal and regulatory requirements (attorney-client privilege, bar association rules, etc.). nBrain is not a law firm and provides technology services only.</p>
+        
+        <h3>9. Limitation of Liability</h3>
+        <p>nBrain's total liability under this agreement shall not exceed the total fees paid by Client. nBrain is not liable for indirect, incidental, or consequential damages. Client is responsible for maintaining backups and disaster recovery procedures.</p>
+        
+        <h3>10. Acceptance & Payment</h3>
+        <p>Client will have 7 business days after production deployment to test and accept the platform. Acceptance will not be unreasonably withheld. Final payment is due upon acceptance or 7 days after deployment, whichever comes first.</p>
+    </div>
+
+    <div class="signature-block page-break">
+        <h2>Authorization & Acceptance</h2>
+        
+        <p>By signing below, both parties agree to the terms, scope, timeline, and investment outlined in this Statement of Work.</p>
+        
+        <div class="signature-line">
+            <strong>Wyoming Asset Protection Trust / Meuli & Associates:</strong>
+            <br><br>
+            Signature: <span class="underline">&nbsp;</span>
+            <br><br>
+            Printed Name: <span class="underline">&nbsp;</span>
+            <br><br>
+            Title: <span class="underline">&nbsp;</span>
+            <br><br>
+            Date: <span class="underline">&nbsp;</span>
+        </div>
+        
+        <div class="signature-line">
+            <strong>nBrain AI, LLC:</strong>
+            <br><br>
+            Signature: <span class="underline">&nbsp;</span>
+            <br><br>
+            Printed Name: Danny DeMichele
+            <br><br>
+            Title: Chief Executive Officer
+            <br><br>
+            Date: <span class="underline">&nbsp;</span>
+        </div>
+    </div>
+
+    <div style="margin-top: 3rem; padding: 2rem; background: #f3f4f6; border-radius: 8px; text-align: center;">
+        <h3 style="margin-bottom: 1rem;">Questions or Ready to Begin?</h3>
+        <p style="margin-bottom: 1rem; color: #374151;">Contact nBrain to discuss this proposal, clarify any details, or schedule your kickoff call.</p>
+        <p>
+            <strong>Email:</strong> danny@nbrain.io<br>
+            <strong>Website:</strong> nbrain.io
+        </p>
+    </div>
+</body>
+</html>
+
+
+
+
+
+
+

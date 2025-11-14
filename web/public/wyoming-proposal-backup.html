@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wyoming Asset Protection Trust - Custom Legal Technology Platform</title>
+    <style>
+        :root {
+            --color-primary: #0F766E;
+            --color-primary-700: #0D5D57;
+            --color-primary-50: #ECFDF5;
+            --color-bg: #F3F4F6;
+            --color-text: #111111;
+            --color-text-muted: #374151;
+            --color-border: #D1D5DB;
+            --color-surface: #FFFFFF;
+            --color-surface-alt: #E5E7EB;
+            --color-accent: #bc4a4b;
+            --color-accent-50: #fef4f4;
+            --color-navy: #0F1B2A;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; }
+        .hero {
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-700) 100%);
+            color: white;
+            padding: 4rem 0 3rem;
+            text-align: center;
+        }
+        .hero h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 700; margin-bottom: 1rem; line-height: 1.2; color: white; }
+        .hero .subtitle { font-size: 1.25rem; opacity: 0.95; margin-bottom: 1.5rem; }
+        .badge {
+            display: inline-block;
+            background: var(--color-accent-50);
+            color: var(--color-accent);
+            padding: 0.375rem 0.875rem;
+            border-radius: 1rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin: 0.25rem;
+        }
+        .badge.proposed { background: #3b82f6; color: white; }
+        .section { padding: 3.5rem 0; background: var(--color-surface); }
+        .section:nth-child(even) { background: var(--color-surface-alt); }
+        .section-title { font-size: 2rem; font-weight: 700; margin-bottom: 1rem; color: var(--color-text); text-align: center; }
+        .section-subtitle { text-align: center; color: var(--color-text-muted); margin-bottom: 2.5rem; font-size: 1.125rem; }
+        .card {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 10px 30px rgba(0,0,0,0.08);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15), 0 15px 40px rgba(0,0,0,0.1); }
+        .grid { display: grid; gap: 1.5rem; margin-bottom: 2rem; }
+        .grid-2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+        .grid-3 { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+        .grid-4 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+        .stat-box {
+            background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-700) 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .stat-value { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .stat-label { font-size: 0.95rem; opacity: 0.9; }
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: var(--color-primary-50);
+            color: var(--color-primary);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        .feature-card h3 { font-size: 1.25rem; margin-bottom: 0.75rem; color: var(--color-text); }
+        .feature-card p { color: var(--color-text-muted); line-height: 1.6; }
+        .feature-card ul { margin-top: 1rem; list-style: none; }
+        .feature-card li {
+            padding-left: 1.5rem;
+            position: relative;
+            margin-bottom: 0.5rem;
+            color: var(--color-text-muted);
+        }
+        .feature-card li::before { content: '✓'; position: absolute; left: 0; color: var(--color-primary); font-weight: 700; }
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2rem; }
+            .section-title { font-size: 1.5rem; }
+            .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+        }
+        .toc {
+            background: var(--color-surface);
+            border: 2px solid var(--color-border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+        .toc h2 { margin-bottom: 1rem; color: var(--color-text); }
+        .toc ul { list-style: none; columns: 2; gap: 2rem; }
+        .toc li { margin-bottom: 0.75rem; }
+        .toc a { color: var(--color-primary); text-decoration: none; font-weight: 500; }
+        .toc a:hover { text-decoration: underline; }
+        @media (max-width: 768px) { .toc ul { columns: 1; } }
+        .tech-stack-item {
+            background: var(--color-surface-alt);
+            padding: 1.25rem;
+            border-radius: 8px;
+            border-left: 4px solid var(--color-primary);
+            margin-bottom: 1rem;
+        }
+        .tech-stack-item h4 { color: var(--color-primary); margin-bottom: 0.5rem; font-size: 1.125rem; }
+        .tech-stack-item .description { color: var(--color-text-muted); font-size: 0.9rem; margin-top: 0.5rem; }
+        .workflow-step {
+            background: var(--color-surface);
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 2px solid var(--color-border);
+            position: relative;
+            margin-bottom: 1rem;
+        }
+        .workflow-step::before {
+            content: attr(data-step);
+            position: absolute;
+            top: -15px;
+            left: 1.5rem;
+            background: var(--color-primary);
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.875rem;
+        }
+        .workflow-step h4 { color: var(--color-text); margin-bottom: 0.5rem; margin-top: 0.5rem; }
+        .pricing-box {
+            background: linear-gradient(135deg, #0F1B2A 0%, #1a2942 100%);
+            color: white;
+            padding: 3rem;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .price { font-size: 3.5rem; font-weight: 700; margin: 1.5rem 0; }
+        .price-label { font-size: 1.125rem; opacity: 0.9; }
+        .included-list { text-align: left; margin-top: 2rem; }
+        .included-list li {
+            padding-left: 1.5rem;
+            position: relative;
+            margin-bottom: 0.75rem;
+            opacity: 0.95;
+        }
+        .included-list li::before { content: '✓'; position: absolute; left: 0; color: var(--color-primary-50); font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <div class="container">
+            <img src="nbrain-white-logo-2025.png" alt="nBrain" style="max-width: 180px; width: auto; height: auto; margin: 0 auto 2rem; display: block;" />
+            <h1>Custom Legal Technology Platform</h1>
+            <p class="subtitle">Integrated Client Portal & Intelligent Practice Management System</p>
+            <div style="margin-top: 1.5rem; margin-bottom: 1.5rem;">
+                <div style="font-size: 1rem; opacity: 0.9; margin-bottom: 0.5rem;">Created For:</div>
+                <div style="font-size: 1.125rem; font-weight: 600;">Matt Meuli & Owen Hathaway</div>
+                <div style="font-size: 1rem; opacity: 0.9;">Wyoming Asset Protection Trust</div>
+            </div>
+            <div>
+                <span class="badge proposed">Platform Development</span>
+                <span class="badge">API Integration</span>
+                <span class="badge">AI Automation</span>
+                <span class="badge">Document Management</span>
+            </div>
+        </div>
+    </div>
+
+    <section class="section">
+        <div class="container">
+            <div class="toc">
+                <h2>Proposal Contents</h2>
+                <ul>
+                    <li><a href="#executive-summary">Executive Summary</a></li>
+                    <li><a href="#current-situation">Current Situation</a></li>
+                    <li><a href="#solution">The nBrain Solution</a></li>
+                    <li><a href="#core-modules">Core Platform Modules</a></li>
+                    <li><a href="#tech-stack">Recommended Technology Stack</a></li>
+                    <li><a href="#workflow">Client Journey Workflow</a></li>
+                    <li><a href="#ai-automation">AI Automation Features</a></li>
+                    <li><a href="#integrations">Third-Party Integrations</a></li>
+                    <li><a href="#investment">Investment & Timeline</a></li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <section id="executive-summary" class="section">
+        <div class="container">
+            <h2 class="section-title">Executive Summary</h2>
+            <p class="section-subtitle">A Comprehensive Platform to Scale Your Legal Practice</p>
+            
+            <div class="card" style="margin-bottom: 2rem;">
+                <p style="font-size: 1.125rem; line-height: 1.8; color: var(--color-text-muted);">
+                    Wyoming Asset Protection Trust needs a <strong style="color: var(--color-text);">custom legal technology platform that integrates with WyomingLLCAttorney.com data while providing complete control over the client experience</strong>. This proposal outlines a comprehensive web platform that syncs with existing registered agent services, automates document creation, tracks client matters, and uses AI to proactively manage compliance deadlines and client communications.
+                </p>
+            </div>
+
+            <div class="grid grid-4">
+                <div class="stat-box">
+                    <div class="stat-value">100%</div>
+                    <div class="stat-label">Branded Platform</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">API</div>
+                    <div class="stat-label">Data Synchronization</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">AI</div>
+                    <div class="stat-label">Compliance Monitoring</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value">24/7</div>
+                    <div class="stat-label">Client Access</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="current-situation" class="section">
+        <div class="container">
+            <h2 class="section-title">Current Situation & Challenges</h2>
+            <p class="section-subtitle">Understanding Your Practice's Technology Needs</p>
+
+            <div class="grid grid-2">
+                <div class="card">
+                    <h3 style="color: var(--color-accent); margin-bottom: 1rem;">Business Relationship</h3>
+                    <ul style="list-style: none;">
+                        <li style="padding-left: 1.5rem; position: relative; margin-bottom: 0.75rem; color: var(--color-text-muted);">
+                            <span style="position: absolute; left: 0; color: var(--color-accent); font-weight: 700;">→</span>
+                            Partnership with CompanySage (Andrew Pierce) for registered agent services
+                        </li>
+                        <li style="padding-left: 1.5rem; position: relative; margin-bottom: 0.75rem; color: var(--color-text-muted);">
+                            <span style="position: absolute; left: 0; color: var(--color-accent); font-weight: 700;">→</span>
+                            Lead generation through WyomingLLCAttorney.com (4-12 clients/month)
+                        </li>
+                        <li style="padding-left: 1.5rem; position: relative; margin-bottom: 0.75rem; color: var(--color-text-muted);">
+                            <span style="position: absolute; left: 0; color: var(--color-accent); font-weight: 700;">→</span>
+                            Mark Pierce provides Wyoming physical presence (land, addresses, phone)
+                        </li>
+                        <li style="padding-left: 1.5rem; position: relative; margin-bottom: 0.75rem; color: var(--color-text-muted);">
+                            <span style="position: absolute; left: 0; color: var(--color-accent); font-weight: 700;">→</span>
+                            Currently rely on CompanySage portal interface for entity management
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-accent); margin-bottom: 1rem;">Technology Pain Points</h3>
+                    <ul style="list-style: none;">
+                        <li style="padding-left: 1.5rem; position: relative; margin-bottom: 0.75rem; color: var(--color-text-muted);">
+                            <span style="position: absolute; left: 0; color: var(--color-accent); font-weight: 700;">✗</span>
+                            No custom client portal (clients see CompanySage branding)
+                        </li>
+                        <li style="padding-left: 1.5rem; position: relative; margin-bottom: 0.75rem; color: var(--color-text-muted);">
+                            <span style="position: absolute; left: 0; color: var(--color-accent); font-weight: 700;">✗</span>
+                            Manual entity expiration monitoring (LLCs expire without notification)
+                        </li>
+                        <li style="padding-left: 1.5rem; position: relative; margin-bottom: 0.75rem; color: var(--color-text-muted);">
+                            <span style="position: absolute; left: 0; color: var(--color-accent); font-weight: 700;">✗</span>
+                            Complex questionnaires require 30-minute discovery calls for each client
+                        </li>
+                        <li style="padding-left: 1.5rem; position: relative; margin-bottom: 0.75rem; color: var(--color-text-muted);">
+                            <span style="position: absolute; left: 0; color: var(--color-accent); font-weight: 700;">✗</span>
+                            No centralized document assembly or template automation
+                        </li>
+                        <li style="padding-left: 1.5rem; position: relative; margin-bottom: 0.75rem; color: var(--color-text-muted);">
+                            <span style="position: absolute; left: 0; color: var(--color-accent); font-weight: 700;">✗</span>
+                            No proactive client communication or renewal management
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top: 2rem; background: var(--color-primary-50); border-color: var(--color-primary);">
+                <h3 style="color: var(--color-primary); margin-bottom: 1rem; font-size: 1.25rem;">Strategic Opportunity</h3>
+                <p style="color: var(--color-text-muted); line-height: 1.8;">
+                    By building a custom platform that <strong style="color: var(--color-text);">syncs with CompanySage data while maintaining complete control over the client experience</strong>, WAPA can maintain the beneficial partnership relationship while building a sellable business asset. The platform will position you to eventually become your own registered agent when strategically appropriate, while currently focusing on delivering premium custom service that CompanySage cannot provide.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section id="solution" class="section">
+        <div class="container">
+            <h2 class="section-title">The nBrain Solution</h2>
+            <p class="section-subtitle">Custom Platform Built on Modern, Open-Source Technology</p>
+
+            <div class="grid grid-3">
+                <div class="card">
+                    <div class="feature-icon">1</div>
+                    <h3>Integrated Client Portal</h3>
+                    <p>Custom-branded interface that syncs with CompanySage API while presenting a unified WAPA experience. Clients access all entities, documents, and services through your branded portal.</p>
+                </div>
+
+                <div class="card">
+                    <div class="feature-icon">2</div>
+                    <h3>Matter Management CRM</h3>
+                    <p>Custom CRM designed for legal practice with matter-based organization, workflow automation, and complete client lifecycle tracking from lead to maintenance.</p>
+                </div>
+
+                <div class="card">
+                    <div class="feature-icon">3</div>
+                    <h3>Document Assembly Engine</h3>
+                    <p>Intelligent document generation using Handlebars templates that automatically populate engagement letters, operating agreements, trust documents, and affidavits from client intake forms.</p>
+                </div>
+
+                <div class="card">
+                    <div class="feature-icon">4</div>
+                    <h3>AI Compliance Monitoring</h3>
+                    <p>Oracle agent that monitors entity statuses, tracks expiration deadlines, flags pending state filings, and proactively alerts staff before issues arise.</p>
+                </div>
+
+                <div class="card">
+                    <div class="feature-icon">5</div>
+                    <h3>Automated Communications</h3>
+                    <p>Sequence builder for personalized email and SMS campaigns via Twilio, with AI-drafted client outreach for renewals, contributions, and maintenance check-ins.</p>
+                </div>
+
+                <div class="card">
+                    <div class="feature-icon">6</div>
+                    <h3>Landing Page Builder</h3>
+                    <p>Headless CMS (Strapi) powered website with template builder for service pages, content marketing, and lead capture integrated with your CRM.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="core-modules" class="section">
+        <div class="container">
+            <h2 class="section-title">Core Platform Modules</h2>
+            <p class="section-subtitle">Everything You Need to Scale Your Practice</p>
+
+            <div class="features-grid">
+                <div class="card feature-card">
+                    <h3>1. Client Portal & Dashboard</h3>
+                    <p>White-label interface for clients to access their account</p>
+                    <ul>
+                        <li>Entity status viewing (real-time sync with CompanySage)</li>
+                        <li>Document vault for corporate docs, trust documents, minutes</li>
+                        <li>Billing transparency and payment history</li>
+                        <li>Service add-ons (new LLC formation, bank account setup)</li>
+                        <li>Appointment scheduling with attorney</li>
+                        <li>Secure messaging with your team</li>
+                    </ul>
+                </div>
+
+                <div class="card feature-card">
+                    <h3>2. Legal Operations Center (LOC)</h3>
+                    <p>NOC-style dashboard for staff to monitor all clients</p>
+                    <ul>
+                        <li>Red/Yellow/Green status indicators for each entity</li>
+                        <li>Waterfall feed showing items requiring immediate attention</li>
+                        <li>Expiration tracking (entities, RA renewals, phone numbers, leases)</li>
+                        <li>Daily automated scraping of Secretary of State databases</li>
+                        <li>Drill-down capabilities for detailed entity information</li>
+                        <li>Proactive alerts via email/SMS before deadlines</li>
+                    </ul>
+                </div>
+
+                <div class="card feature-card">
+                    <h3>3. Matter Management & CRM</h3>
+                    <p>Purpose-built for law practice operations</p>
+                    <ul>
+                        <li>Client lifecycle stages (Lead → Prospect → Active → Maintenance)</li>
+                        <li>Matter-based organization (each trust/entity is trackable matter)</li>
+                        <li>Automated workflow checklists based on matter type</li>
+                        <li>Task assignments, deadline tracking, internal notes</li>
+                        <li>LawPay integration for billing and trust accounting</li>
+                        <li>Reporting dashboards for revenue and matter status</li>
+                    </ul>
+                </div>
+
+                <div class="card feature-card">
+                    <h3>4. Document Assembly & Templates</h3>
+                    <p>Automated document generation with intelligent variables</p>
+                    <ul>
+                        <li>Handlebars-based template system for all legal documents</li>
+                        <li>Multi-document generation (trust + holding LLC + operating LLC)</li>
+                        <li>Consistent naming and variable mapping across documents</li>
+                        <li>Version control for template updates</li>
+                        <li>PDF generation with e-signature workflow</li>
+                        <li>Validation and error checking before finalization</li>
+                    </ul>
+                </div>
+
+                <div class="card feature-card">
+                    <h3>5. Intelligent Client Intake</h3>
+                    <p>Reduce discovery call burden with guided questionnaires</p>
+                    <ul>
+                        <li>Conversational interface with plain-English explanations</li>
+                        <li>Context-aware help for legal terminology</li>
+                        <li>Progressive disclosure (only ask relevant questions)</li>
+                        <li>Automatic pre-population of document variables</li>
+                        <li>Attorney review queue for incomplete responses</li>
+                        <li>Discovery call preparation summaries</li>
+                    </ul>
+                </div>
+
+                <div class="card feature-card">
+                    <h3>6. Email & Communication Automation</h3>
+                    <p>Targeted nurture sequences and personalized outreach</p>
+                    <ul>
+                        <li>Behavioral triggers based on client actions</li>
+                        <li>Interest graph modeling for relevant content delivery</li>
+                        <li>Lifecycle messaging (prospects vs. maintenance clients)</li>
+                        <li>Inactive client detection (6+ months no login)</li>
+                        <li>A/B testing for optimization</li>
+                        <li>Email thread analysis for opportunity identification</li>
+                    </ul>
+                </div>
+
+                <div class="card feature-card">
+                    <h3>7. Content Management System</h3>
+                    <p>Strapi headless CMS for website and marketing</p>
+                    <ul>
+                        <li>Landing page builder with templates</li>
+                        <li>Blog/article publishing for SEO and education</li>
+                        <li>Service page management</li>
+                        <li>Lead capture forms integrated with CRM</li>
+                        <li>Mobile-responsive design system</li>
+                        <li>Vue.js component library for custom pages</li>
+                    </ul>
+                </div>
+
+                <div class="card feature-card">
+                    <h3>8. API Integration Layer</h3>
+                    <p>Seamless synchronization with partner platforms</p>
+                    <ul>
+                        <li>CompanySage API for entity data and RA status</li>
+                        <li>Wyoming LLC Attorney API for lead tracking</li>
+                        <li>Advantage Partner Program affiliate integration</li>
+                        <li>Webhook listeners for real-time updates</li>
+                        <li>Conflict resolution for data sync</li>
+                        <li>Failover handling for API downtime</li>
+                    </ul>
+                </div>
+
+                <div class="card feature-card">
+                    <h3>9. AI Oracle Agent</h3>
+                    <p>Proactive monitoring and opportunity identification</p>
+                    <ul>
+                        <li>Email communication analysis for life events and needs</li>
+                        <li>Client behavior tracking (logins, document views, payments)</li>
+                        <li>Opportunity scoring for upsells and additional services</li>
+                        <li>At-risk client detection (frustrated or confused clients)</li>
+                        <li>Personalized outreach recommendations</li>
+                        <li>Compliance deadline calculations and alerts</li>
+                    </ul>
+                </div>
+
+                <div class="card feature-card">
+                    <h3>10. Automated Corporate Minutes</h3>
+                    <p>Monthly/quarterly client check-ins for compliance</p>
+                    <ul>
+                        <li>Scheduled email/SMS questionnaires to clients</li>
+                        <li>Natural language processing of client responses</li>
+                        <li>Automated generation of compliant corporate minutes</li>
+                        <li>Trust contribution affidavit guidance</li>
+                        <li>Historical tracking and audit trail</li>
+                        <li>Attorney approval workflow before finalization</li>
+                    </ul>
+                </div>
+
+                <div class="card feature-card">
+                    <h3>11. SMS & Voice Integration</h3>
+                    <p>Twilio-powered multi-channel communications</p>
+                    <ul>
+                        <li>Automated SMS reminders for renewals and deadlines</li>
+                        <li>Two-way text messaging with clients</li>
+                        <li>Appointment confirmations and calendar reminders</li>
+                        <li>Personalized message templates</li>
+                        <li>Bulk SMS campaigns for announcements</li>
+                        <li>Message tracking and response analytics</li>
+                    </ul>
+                </div>
+
+                <div class="card feature-card">
+                    <h3>12. Analytics & Reporting</h3>
+                    <p>Business intelligence for practice growth</p>
+                    <ul>
+                        <li>Client acquisition cost and lifetime value</li>
+                        <li>Matter status and completion tracking</li>
+                        <li>Revenue forecasting and trends</li>
+                        <li>Staff productivity and workload analysis</li>
+                        <li>Client engagement metrics (portal usage, email opens)</li>
+                        <li>Compliance deadline adherence reporting</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="tech-stack" class="section">
+        <div class="container">
+            <h2 class="section-title">Recommended Technology Stack</h2>
+            <p class="section-subtitle">Modern, Open-Source, Self-Hostable Architecture</p>
+
+            <div class="grid grid-2">
+                <div>
+                    <div class="tech-stack-item">
+                        <h4>Frontend Framework</h4>
+                        <strong>Vue.js with Nuxt Hub</strong>
+                        <div class="description">
+                            Component-based architecture using Owen's existing Vue.js library. Nuxt Hub provides server-side rendering, routing, and SEO optimization. 100% open-source with excellent documentation.
+                        </div>
+                    </div>
+
+                    <div class="tech-stack-item">
+                        <h4>Content Management System</h4>
+                        <strong>Strapi (Headless CMS)</strong>
+                        <div class="description">
+                            Pure open-source CMS with JSON-based content delivery. Complete flexibility in presentation layer. Self-hostable with no vendor lock-in. Owen's preferred platform with existing components.
+                        </div>
+                    </div>
+
+                    <div class="tech-stack-item">
+                        <h4>Backend & API</h4>
+                        <strong>Node.js with Express</strong>
+                        <div class="description">
+                            RESTful API architecture for handling business logic, integrations, and data synchronization. Scalable and performant with excellent ecosystem.
+                        </div>
+                    </div>
+
+                    <div class="tech-stack-item">
+                        <h4>Database</h4>
+                        <strong>PostgreSQL</strong>
+                        <div class="description">
+                            Enterprise-grade relational database for client data, matters, documents, and transactions. ACID compliance for legal practice requirements.
+                        </div>
+                    </div>
+
+                    <div class="tech-stack-item">
+                        <h4>Hosting & Infrastructure</h4>
+                        <strong>Render</strong>
+                        <div class="description">
+                            Modern cloud platform with auto-scaling, automated deployments, and built-in SSL. PostgreSQL, Redis, and web services all managed in one place.
+                        </div>
+                    </div>
+
+                    <div class="tech-stack-item">
+                        <h4>Vector Database</h4>
+                        <strong>Pinecone</strong>
+                        <div class="description">
+                            Managed vector database for AI/RAG implementations. Powers document intelligence, semantic search, and AI-driven features without infrastructure overhead.
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="tech-stack-item">
+                        <h4>AI & Language Models</h4>
+                        <strong>OpenAI API with Custom RAG</strong>
+                        <div class="description">
+                            GPT-4 for natural language processing, document analysis, and client communications. Custom Retrieval Augmented Generation using your legal knowledge base for accurate, non-hallucinating responses.
+                        </div>
+                    </div>
+
+                    <div class="tech-stack-item">
+                        <h4>Document Templates</h4>
+                        <strong>Handlebars.js</strong>
+                        <div class="description">
+                            Industry-standard template engine with AI-readable variable format. Consistent syntax across all legal documents for reliable automated population.
+                        </div>
+                    </div>
+
+                    <div class="tech-stack-item">
+                        <h4>SMS & Voice</h4>
+                        <strong>Twilio</strong>
+                        <div class="description">
+                            Enterprise communications platform for SMS, voice, and phone number provisioning. Programmable messaging with delivery tracking and two-way conversations.
+                        </div>
+                    </div>
+
+                    <div class="tech-stack-item">
+                        <h4>Payment Processing</h4>
+                        <strong>LawPay</strong>
+                        <div class="description">
+                            Legal industry-specific payment processor with trust account compliance. Already in use, easy integration with client portal and matter billing.
+                        </div>
+                    </div>
+
+                    <div class="tech-stack-item">
+                        <h4>Version Control</h4>
+                        <strong>GitHub</strong>
+                        <div class="description">
+                            Enterprise GitHub organization for yourtrustedplanner.com with private repositories, CI/CD workflows, and collaborative development.
+                        </div>
+                    </div>
+
+                    <div class="tech-stack-item">
+                        <h4>API Integrations</h4>
+                        <strong>CompanySage API, Wyoming LLC Attorney API</strong>
+                        <div class="description">
+                            Real-time data synchronization with partner platforms for entity status, registered agent information, and lead tracking. Webhook-based updates for instant notifications.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top: 2rem; background: var(--color-primary-50); border-color: var(--color-primary);">
+                <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Architecture Philosophy</h3>
+                <p style="color: var(--color-text-muted); line-height: 1.8; margin-bottom: 1rem;">
+                    <strong style="color: var(--color-text);">Pure Open Source:</strong> No proprietary platforms or vendor lock-in. Everything is open-source with self-hosting options, giving you complete control and portability.
+                </p>
+                <p style="color: var(--color-text-muted); line-height: 1.8; margin-bottom: 1rem;">
+                    <strong style="color: var(--color-text);">API-First Design:</strong> Every feature accessible via RESTful API, enabling future integrations, mobile apps, and third-party connections as your practice evolves.
+                </p>
+                <p style="color: var(--color-text-muted); line-height: 1.8;">
+                    <strong style="color: var(--color-text);">Scalable Infrastructure:</strong> Designed to grow from 50 to 500+ clients without architectural changes. Auto-scaling hosting and optimized database queries ensure performance at any size.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section id="workflow" class="section">
+        <div class="container">
+            <h2 class="section-title">Client Journey Workflow</h2>
+            <p class="section-subtitle">Automated End-to-End Process from Lead to Maintenance</p>
+
+            <div class="workflow-step" data-step="1">
+                <h4>Lead Capture & Initial Contact</h4>
+                <p style="color: var(--color-text-muted); margin-top: 0.5rem;">
+                    <strong>Source:</strong> WyomingLLCAttorney.com referral, direct website inquiry, or content marketing lead<br>
+                    <strong>Action:</strong> Automatic CRM entry, lead scoring, welcome email sequence<br>
+                    <strong>Automation:</strong> AI analyzes inquiry to recommend service package and assign to attorney
+                </p>
+            </div>
+
+            <div class="workflow-step" data-step="2">
+                <h4>Initial Consultation Booking</h4>
+                <p style="color: var(--color-text-muted); margin-top: 0.5rem;">
+                    <strong>Client Action:</strong> Books discovery call via Calendly integration in client portal<br>
+                    <strong>Automation:</strong> Pre-call questionnaire sent via email/SMS, responses populate CRM<br>
+                    <strong>Attorney Prep:</strong> AI-generated consultation summary with client needs and recommended structure
+                </p>
+            </div>
+
+            <div class="workflow-step" data-step="3">
+                <h4>Discovery Call & Scoping</h4>
+                <p style="color: var(--color-text-muted); margin-top: 0.5rem;">
+                    <strong>Attorney Action:</strong> Reviews AI summary, conducts 30-minute consultation<br>
+                    <strong>Output:</strong> Recommended trust structure (Trust + Holding LLC + Operating LLC)<br>
+                    <strong>System Action:</strong> Proposal generated with pricing, engagement letter drafted
+                </p>
+            </div>
+
+            <div class="workflow-step" data-step="4">
+                <h4>Engagement & Payment</h4>
+                <p style="color: var(--color-text-muted); margin-top: 0.5rem;">
+                    <strong>Client Action:</strong> Reviews proposal in portal, e-signs engagement letter<br>
+                    <strong>Payment:</strong> LawPay integration for deposit/full payment<br>
+                    <strong>Automation:</strong> Payment confirmation triggers matter creation and workflow checklist
+                </p>
+            </div>
+
+            <div class="workflow-step" data-step="5">
+                <h4>Detailed Client Intake</h4>
+                <p style="color: var(--color-text-muted); margin-top: 0.5rem;">
+                    <strong>Client Experience:</strong> Intelligent questionnaire with context-aware explanations<br>
+                    <strong>AI Assistance:</strong> Explains legal terminology in plain English, asks follow-up questions<br>
+                    <strong>Data Capture:</strong> All responses mapped to document template variables automatically
+                </p>
+            </div>
+
+            <div class="workflow-step" data-step="6">
+                <h4>Document Generation & Review</h4>
+                <p style="color: var(--color-text-muted); margin-top: 0.5rem;">
+                    <strong>Automation:</strong> Multi-document generation (trust, holding LLC, operating LLC, affidavits)<br>
+                    <strong>Validation:</strong> System checks for consistent naming, complete data, compliance requirements<br>
+                    <strong>Attorney Review:</strong> Documents routed to Matt for final review and edits
+                </p>
+            </div>
+
+            <div class="workflow-step" data-step="7">
+                <h4>Entity Formation & Filing</h4>
+                <p style="color: var(--color-text-muted); margin-top: 0.5rem;">
+                    <strong>API Integration:</strong> CompanySage API triggered to create entities via Mark's interface<br>
+                    <strong>Registered Agent:</strong> Automatic assignment of RA, physical address, phone number<br>
+                    <strong>Client Portal:</strong> Real-time status updates as entities are formed and approved
+                </p>
+            </div>
+
+            <div class="workflow-step" data-step="8">
+                <h4>Document Execution & Delivery</h4>
+                <p style="color: var(--color-text-muted); margin-top: 0.5rem;">
+                    <strong>E-Signature:</strong> Client signs all documents electronically in portal<br>
+                    <strong>Document Vault:</strong> Completed documents automatically stored in client's secure vault<br>
+                    <strong>Deliverables:</strong> Operating agreements, EIN confirmation, trust documents, lease agreements
+                </p>
+            </div>
+
+            <div class="workflow-step" data-step="9">
+                <h4>Ongoing Maintenance & Compliance</h4>
+                <p style="color: var(--color-text-muted); margin-top: 0.5rem;">
+                    <strong>Legal Operations Center:</strong> Dashboard monitors entity status, renewal dates, compliance deadlines<br>
+                    <strong>Oracle Agent:</strong> Daily scraping of Secretary of State, proactive expiration alerts<br>
+                    <strong>Client Communications:</strong> Automated renewal reminders, contribution questionnaires, check-in sequences
+                </p>
+            </div>
+
+            <div class="workflow-step" data-step="10">
+                <h4>Proactive Opportunity Management</h4>
+                <p style="color: var(--color-text-muted); margin-top: 0.5rem;">
+                    <strong>Email Analysis:</strong> AI monitors client communications for life events (new business, real estate, etc.)<br>
+                    <strong>Inactive Client Detection:</strong> Flags clients who haven't logged in for 6+ months<br>
+                    <strong>Personalized Outreach:</strong> AI drafts targeted emails/SMS based on client history and interests
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section id="ai-automation" class="section">
+        <div class="container">
+            <h2 class="section-title">AI Automation Features</h2>
+            <p class="section-subtitle">Intelligent Agents That Scale Your Practice</p>
+
+            <div class="grid grid-2">
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Compliance Oracle Agent</h3>
+                    <p style="margin-bottom: 1rem; color: var(--color-text-muted);">
+                        AI-powered monitoring system that acts as your practice's compliance watchdog, preventing expirations and missed deadlines.
+                    </p>
+                    <ul>
+                        <li>Daily automated scraping of Wyoming Secretary of State database</li>
+                        <li>API integration with CompanySage for registered agent status</li>
+                        <li>Deadline calculations for annual renewals, quarterly reviews, lease expirations</li>
+                        <li>Red/Yellow/Green status indicators on Legal Operations Center dashboard</li>
+                        <li>Proactive email/SMS alerts to staff 60/30/7 days before deadlines</li>
+                        <li>Client notification drafting with personalized renewal instructions</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Email Intelligence & Opportunity Analysis</h3>
+                    <p style="margin-bottom: 1rem; color: var(--color-text-muted);">
+                        Full email integration with AI analysis to identify client needs, concerns, and upsell opportunities before they're explicitly stated.
+                    </p>
+                    <ul>
+                        <li>Email thread ingestion and natural language processing</li>
+                        <li>Life event detection (new business, property purchase, family changes)</li>
+                        <li>At-risk client identification (frustration, confusion in communications)</li>
+                        <li>Opportunity scoring for additional services (new LLCs, trust amendments)</li>
+                        <li>Automated personalized outreach recommendations</li>
+                        <li>Content matching based on client interest graph</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Intelligent Document Assembly</h3>
+                    <p style="margin-bottom: 1rem; color: var(--color-text-muted);">
+                        AI-powered document generation that understands legal context and ensures consistency across multi-entity structures.
+                    </p>
+                    <ul>
+                        <li>Context-aware variable mapping (Company Name in LLC vs. Trust context)</li>
+                        <li>Consistency validation across all related documents</li>
+                        <li>Missing information detection before document finalization</li>
+                        <li>Compliance requirement checking based on entity type and state</li>
+                        <li>Version control with bulk template updates when laws change</li>
+                        <li>Multi-document generation from single intake session</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Conversational Intake Assistant</h3>
+                    <p style="margin-bottom: 1rem; color: var(--color-text-muted);">
+                        AI agent that guides clients through complex questionnaires with natural language explanations, reducing discovery call burden.
+                    </p>
+                    <ul>
+                        <li>Plain-English explanations of legal terminology</li>
+                        <li>Contextual examples when clients encounter confusing questions</li>
+                        <li>Progressive questioning based on previous responses</li>
+                        <li>Follow-up clarification for ambiguous answers</li>
+                        <li>Attorney review queue for items requiring human judgment</li>
+                        <li>Discovery call preparation summaries for remaining items</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Automated Corporate Minutes Generator</h3>
+                    <p style="margin-bottom: 1rem; color: var(--color-text-muted);">
+                        Monthly/quarterly client check-ins that automatically generate compliant corporate minutes and trust contribution affidavits.
+                    </p>
+                    <ul>
+                        <li>Scheduled email/SMS questionnaires ("Did you take any loans this month?")</li>
+                        <li>Natural language processing of client responses</li>
+                        <li>LLM-powered minute generation in proper legal format</li>
+                        <li>Trust contribution classification (health/education/maintenance/support)</li>
+                        <li>Historical audit trail for all corporate actions</li>
+                        <li>Attorney approval workflow before client e-signature</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Client Engagement & Nurture AI</h3>
+                    <p style="margin-bottom: 1rem; color: var(--color-text-muted);">
+                        Behavioral tracking and interest modeling that delivers personalized content and identifies re-engagement opportunities.
+                    </p>
+                    <ul>
+                        <li>Portal behavior analysis (document views, page visits, time spent)</li>
+                        <li>Interest graph construction based on services purchased and content consumed</li>
+                        <li>Behavioral triggers for relevant content delivery</li>
+                        <li>Inactive client detection (6+ months no activity)</li>
+                        <li>A/B testing for email subject lines and send times</li>
+                        <li>Unsubscribe prediction to prevent client churn</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top: 2rem; background: linear-gradient(135deg, var(--color-primary-50) 0%, white 100%);">
+                <h3 style="color: var(--color-primary); margin-bottom: 1rem; font-size: 1.5rem;">AI Safety & Compliance</h3>
+                <p style="color: var(--color-text-muted); line-height: 1.8; margin-bottom: 1rem;">
+                    <strong style="color: var(--color-text);">Attorney-in-the-Loop:</strong> All AI-generated documents, communications, and recommendations route through attorney review queues before client delivery. The system assists and accelerates, but humans maintain final decision authority.
+                </p>
+                <p style="color: var(--color-text-muted); line-height: 1.8; margin-bottom: 1rem;">
+                    <strong style="color: var(--color-text);">Private Secure AI:</strong> All AI processing uses your private RAG system with secure API access. No client data is used for model training. Full HIPAA-level encryption and access controls.
+                </p>
+                <p style="color: var(--color-text-muted); line-height: 1.8;">
+                    <strong style="color: var(--color-text);">Non-Hallucinating Responses:</strong> Custom Retrieval Augmented Generation ensures AI only provides information grounded in your legal knowledge base. Safety guardrails prevent legal advice in client-facing interfaces.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section id="integrations" class="section">
+        <div class="container">
+            <h2 class="section-title">Third-Party Integrations</h2>
+            <p class="section-subtitle">Seamless Connections to Your Existing Tools & Partners</p>
+
+            <div class="grid grid-2">
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">CompanySage API Integration</h3>
+                    <ul>
+                        <li>Real-time entity status synchronization</li>
+                        <li>Registered agent assignment and management</li>
+                        <li>Corporate document repository access</li>
+                        <li>Billing and renewal data sync</li>
+                        <li>Advantage Partner Program affiliate tracking</li>
+                        <li>Webhook listeners for instant updates</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Wyoming LLC Attorney API</h3>
+                    <ul>
+                        <li>Lead tracking from referral program</li>
+                        <li>Service package mapping to CRM</li>
+                        <li>Affiliate commission tracking</li>
+                        <li>Client handoff workflow automation</li>
+                        <li>Multi-state LLC formation coordination</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">LawPay Payment Processing</h3>
+                    <ul>
+                        <li>Integrated payment forms in client portal</li>
+                        <li>Trust account compliance and IOLTA handling</li>
+                        <li>Matter-based billing and invoicing</li>
+                        <li>Automatic payment receipt generation</li>
+                        <li>Recurring billing for maintenance programs</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Twilio Communications Platform</h3>
+                    <ul>
+                        <li>SMS appointment reminders and confirmations</li>
+                        <li>Two-way text messaging with clients</li>
+                        <li>Automated renewal and deadline alerts</li>
+                        <li>Bulk SMS campaigns for announcements</li>
+                        <li>Wyoming phone number provisioning (future)</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Email Service Provider</h3>
+                    <ul>
+                        <li>Transactional emails (confirmations, notifications)</li>
+                        <li>Marketing campaigns and nurture sequences</li>
+                        <li>Email deliverability optimization</li>
+                        <li>Open/click tracking and analytics</li>
+                        <li>A/B testing for optimization</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Calendar & Scheduling</h3>
+                    <ul>
+                        <li>Calendly integration for appointment booking</li>
+                        <li>Automated calendar invites and reminders</li>
+                        <li>Attorney availability management</li>
+                        <li>Timezone detection and conversion</li>
+                        <li>Rescheduling and cancellation workflows</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="investment" class="section">
+        <div class="container">
+            <h2 class="section-title">Investment & Timeline</h2>
+            <p class="section-subtitle">Turnkey Platform Development</p>
+
+            <div class="pricing-box">
+                <div class="price-label">One-Time Platform Development</div>
+                <div class="price">$15,000</div>
+                <p style="font-size: 1.125rem; opacity: 0.9; margin-bottom: 2rem;">Complete Custom Platform Built & Deployed</p>
+                
+                <ul class="included-list">
+                    <li>Custom Vue.js frontend with white-label client portal</li>
+                    <li>Strapi headless CMS for website and content management</li>
+                    <li>Matter management CRM with workflow automation</li>
+                    <li>Document assembly engine with Handlebars templates</li>
+                    <li>Legal Operations Center (LOC) compliance dashboard</li>
+                    <li>AI Oracle Agent for monitoring and opportunity analysis</li>
+                    <li>CompanySage API integration for entity data sync</li>
+                    <li>Wyoming LLC Attorney API integration for leads</li>
+                    <li>LawPay payment processing integration</li>
+                    <li>Twilio SMS and communications setup</li>
+                    <li>Email automation and nurture sequences</li>
+                    <li>Automated corporate minutes generator</li>
+                    <li>Intelligent client intake questionnaire system</li>
+                    <li>PostgreSQL database design and setup</li>
+                    <li>Render hosting environment (production + staging)</li>
+                    <li>Pinecone vector database for AI features</li>
+                    <li>GitHub organization and repository setup</li>
+                    <li>Complete documentation and training</li>
+                    <li>30 days post-launch support and optimization</li>
+                </ul>
+            </div>
+
+            <div class="grid grid-2" style="margin-top: 3rem;">
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">Development Timeline</h3>
+                    <div style="color: var(--color-text-muted); line-height: 1.8;">
+                        <p style="margin-bottom: 1rem;"><strong style="color: var(--color-text);">Weeks 1-2: Foundation</strong><br>Database design, API architecture, GitHub setup, Strapi CMS configuration, hosting environment</p>
+                        <p style="margin-bottom: 1rem;"><strong style="color: var(--color-text);">Weeks 3-4: Core Platform</strong><br>Client portal UI, matter management CRM, document template system, CompanySage API integration</p>
+                        <p style="margin-bottom: 1rem;"><strong style="color: var(--color-text);">Weeks 5-6: AI & Automation</strong><br>Legal Operations Center dashboard, Oracle Agent, email intelligence, automated communications</p>
+                        <p style="margin-bottom: 1rem;"><strong style="color: var(--color-text);">Weeks 7-8: Integration & Testing</strong><br>Payment processing, SMS integration, client intake flow, end-to-end testing</p>
+                        <p><strong style="color: var(--color-text);">Week 9: Launch & Training</strong><br>Production deployment, staff training, documentation handoff</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="color: var(--color-primary); margin-bottom: 1rem;">What's Not Included</h3>
+                    <div style="color: var(--color-text-muted); line-height: 1.8;">
+                        <p style="margin-bottom: 1rem;"><strong style="color: var(--color-text);">Ongoing Hosting & Services:</strong><br>
+                        Render hosting (~$50-100/month), Pinecone vector DB (~$70/month), Twilio usage (pay-as-you-go), OpenAI API usage (~$50-200/month depending on volume)</p>
+                        
+                        <p style="margin-bottom: 1rem;"><strong style="color: var(--color-text);">Third-Party Account Fees:</strong><br>
+                        LawPay transaction fees, CompanySage API access (if applicable), domain registration, SSL certificates</p>
+                        
+                        <p style="margin-bottom: 1rem;"><strong style="color: var(--color-text);">Optional Add-Ons:</strong><br>
+                        Monthly retainer for ongoing feature development ($2,500-5,000/month), priority support SLA, custom integrations beyond scope, content writing services</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top: 2rem; background: var(--color-accent-50); border-color: var(--color-accent);">
+                <h3 style="color: var(--color-accent); margin-bottom: 1rem; font-size: 1.5rem;">Payment Terms</h3>
+                <p style="color: var(--color-text-muted); line-height: 1.8; margin-bottom: 1rem;">
+                    <strong style="color: var(--color-text);">50% deposit ($7,500)</strong> due upon contract signing to begin development
+                </p>
+                <p style="color: var(--color-text-muted); line-height: 1.8;">
+                    <strong style="color: var(--color-text);">50% final payment ($7,500)</strong> due upon production deployment and handoff
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" style="background: linear-gradient(135deg, var(--color-navy) 0%, #1a2942 100%); color: white;">
+        <div class="container" style="text-align: center;">
+            <h2 style="color: white; margin-bottom: 1rem; font-size: 2.5rem;">Ready to Build Your Platform?</h2>
+            <p style="font-size: 1.25rem; opacity: 0.9; margin-bottom: 2rem; max-width: 700px; margin-left: auto; margin-right: auto;">
+                Let's schedule a kickoff call to finalize requirements, review Owen's existing Vue.js components, and plan the CompanySage API integration strategy.
+            </p>
+            <div style="margin-top: 2.5rem;">
+                <a href="mailto:danny@nbrain.io?subject=Wyoming Asset Protection Trust - Platform Development" style="display: inline-block; background: var(--color-primary); color: white; padding: 1.25rem 3rem; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 1.125rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: all 0.3s ease; margin: 0.5rem;">
+                    Contact nBrain
+                </a>
+                <a href="wyoming-contract.html" style="display: inline-block; background: white; color: var(--color-navy); padding: 1.25rem 3rem; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 1.125rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: all 0.3s ease; margin: 0.5rem;">
+                    View Agreement
+                </a>
+            </div>
+            <p style="margin-top: 2rem; opacity: 0.8; font-size: 0.95rem;">
+                Questions? Email danny@nbrain.io or call for immediate assistance.
+            </p>
+        </div>
+    </section>
+
+    <footer style="background: var(--color-navy); color: white; padding: 2rem 0; text-align: center; opacity: 0.7; font-size: 0.875rem;">
+        <div class="container">
+            <p>© 2025 nBrain. All rights reserved.</p>
+            <p style="margin-top: 0.5rem;">This proposal is confidential and prepared exclusively for Wyoming Asset Protection Trust.</p>
+        </div>
+    </footer>
+</body>
+</html>

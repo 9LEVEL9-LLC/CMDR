@@ -1,0 +1,7423 @@
+const express = require('express');
+const cors = require('cors');
+const { Pool } = require('pg');
+const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const axios = require('axios');
+const archiver = require('archiver');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Anthropic = require('@anthropic-ai/sdk');
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
+let dispatchOutbox = null;
+try {
+  ({ runOnce: dispatchOutbox } = require('./sender.js'));
+} catch (_) {
+  // sender not available in some environments; manual dispatch endpoint will no-op
+}
+
+// Proactive probe: whether streaming is supported for current model/API
+let STREAMING_SUPPORTED = null; // null = unknown, true/false = probed
+async function probeStreamingSupport() {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      STREAMING_SUPPORTED = false;
+      console.log('[ai] streaming probe: no API key');
+      return;
+    }
+    const genAI = new GoogleGenerativeAI(apiKey, { apiVersion: 'v1' });
+    const mdl = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.5-pro' });
+    const result = await mdl.generateContentStream({ contents: [{ role: 'user', parts: [{ text: 'ping' }] }] });
+    for await (const _ of result.stream) { break; }
+    STREAMING_SUPPORTED = true;
+    console.log('[ai] streaming probe: supported');
+  } catch (e) {
+    STREAMING_SUPPORTED = false;
+    console.log('[ai] streaming probe: not supported:', (e && e.message) || e);
+  }
+}
+
+// Periodically dispatch email outbox if sender is available (acts like a lightweight cron)
+if (dispatchOutbox) {
+  setTimeout(() => {
+    dispatchOutbox().catch(()=>{});
+  }, 5000);
+  setInterval(() => {
+    dispatchOutbox().catch(()=>{});
+  }, 60 * 1000);
+}
+const bcrypt = require('bcrypt');
+
+const app = express();
+
+console.log('📦 Express app created');
+
+// Super minimal test endpoint - NO dependencies, NO middleware
+app.get('/ping', (_req, res) => {
+  res.status(200).send('pong');
+});
+
+console.log('✅ Ping endpoint registered');
+
+// CORS configuration with explicit origins
+const corsOptions = {
+  origin: [
+    'https://nbrain-platform-frontend.onrender.com',
+    'https://clients.nbrain.ai',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+console.log('🔧 Configuring middleware...');
+app.use(cors(corsOptions));
+console.log('✅ CORS configured');
+app.use(express.json({ limit: '50mb' })); // Increase limit for file uploads in change requests
+console.log('✅ JSON parser configured');
+
+// Gemini transient error handling
+function isTransientGeminiError(error) {
+  const message = String((error && error.message) || '');
+  return (
+    message.includes('503') ||
+    message.toLowerCase().includes('service unavailable') ||
+    message.toLowerCase().includes('overloaded') ||
+    message.toLowerCase().includes('rate') ||
+    message.toLowerCase().includes('quota')
+  );
+}
+
+async function generateContentWithRetries(model, args, maxAttempts = 3) {
+  let lastError = null;
+  const backoffsMs = [400, 900, 1800];
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await model.generateContent(args);
+    } catch (e) {
+      lastError = e;
+      if (attempt < maxAttempts - 1 && isTransientGeminiError(e)) {
+        const delay = backoffsMs[attempt] || 1500;
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastError;
+}
+
+// Fallback generation that switches models on quota/rate errors
+async function generateWithFallback(genAI, baseModelOptions, args, maxAttemptsPerModel = 3) {
+  const primary = (baseModelOptions && baseModelOptions.model) || (process.env.GEMINI_MODEL || 'gemini-2.5-pro');
+  const candidates = Array.from(new Set([
+    primary,
+    'gemini-2.0-flash-exp',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro'
+  ]));
+  let lastErr = null;
+  for (const m of candidates) {
+    try {
+      const mdl = genAI.getGenerativeModel({ ...baseModelOptions, model: m });
+      return await generateContentWithRetries(mdl, args, maxAttemptsPerModel);
+    } catch (e) {
+      lastErr = e;
+      if (!isTransientGeminiError(e)) throw e;
+      continue;
+    }
+  }
+  throw lastErr;
+}
+
+// Claude API helper functions
+async function generateClaudeContent(systemPrompt, messages, temperature = 0.7, maxTokens = 4096) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing ANTHROPIC_API_KEY');
+  }
+
+  const anthropic = new Anthropic({
+    apiKey: apiKey,
+  });
+
+  // Convert messages to Claude format
+  const claudeMessages = messages.map(msg => ({
+    role: msg.role === 'model' ? 'assistant' : msg.role,
+    content: msg.parts ? msg.parts.map(p => p.text).join('') : msg.content || ''
+  }));
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: maxTokens,
+    temperature: temperature,
+    system: systemPrompt,
+    messages: claudeMessages
+  });
+
+  return {
+    response: {
+      text: () => response.content[0].text
+    }
+  };
+}
+
+async function generateClaudeContentStream(systemPrompt, messages, temperature = 0.7, maxTokens = 4096) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing ANTHROPIC_API_KEY');
+  }
+
+  const anthropic = new Anthropic({
+    apiKey: apiKey,
+  });
+
+  // Convert messages to Claude format
+  const claudeMessages = messages.map(msg => ({
+    role: msg.role === 'model' ? 'assistant' : msg.role,
+    content: msg.parts ? msg.parts.map(p => p.text).join('') : msg.content || ''
+  }));
+
+  return anthropic.messages.stream({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: maxTokens,
+    temperature: temperature,
+    system: systemPrompt,
+    messages: claudeMessages
+  });
+}
+
+// Early uploader for admin webinar images (avoid TDZ on later upload init)
+const uploadsDir = path.join(__dirname, 'uploads');
+try { if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir); } catch {}
+const webinarStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = path.join(uploadsDir, 'webinars');
+    try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const stamp = Date.now();
+    const safe = file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    cb(null, `${stamp}__${safe}`);
+  }
+});
+const uploadWebinar = multer({ storage: webinarStorage });
+
+const pool = new Pool({ 
+  connectionString: process.env.DATABASE_URL, 
+  ssl: process.env.DATABASE_SSL ? { rejectUnauthorized: false } : false,
+  connectionTimeoutMillis: 5000, // 5 second connection timeout
+  idleTimeoutMillis: 30000, // 30 seconds idle timeout
+  max: 10, // maximum pool size
+});
+
+// Handle pool errors gracefully
+pool.on('error', (err) => {
+  console.error('Unexpected database pool error:', err);
+  // Don't exit the process - let Render handle it via health checks
+});
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+
+// Ensure schema exists (idempotent). Runs on boot so queries never reference missing columns.
+async function ensureSchema() {
+  await pool.query(`
+    create table if not exists users (
+      id serial primary key,
+      role text not null,
+      name text not null,
+      email text unique not null,
+      username text unique not null,
+      password text not null
+    );
+    create table if not exists advisor_clients (
+      advisor_id int not null references users(id) on delete cascade,
+      client_id int not null references users(id) on delete cascade,
+      primary key (advisor_id, client_id)
+    );
+    create table if not exists projects (
+      id serial primary key,
+      client_id int not null references users(id) on delete cascade,
+      name text not null,
+      status text not null,
+      eta text,
+      project_stage text default 'Scope',
+      created_at timestamptz default now()
+    );
+  `);
+  // Add project_stage column if it doesn't exist
+  await pool.query("alter table projects add column if not exists project_stage text default 'Scope'");
+  
+  // Add extended profile columns if they don't exist
+  await pool.query('alter table users add column if not exists company_name text');
+  await pool.query('alter table users add column if not exists website_url text');
+  await pool.query('alter table users add column if not exists phone text');
+
+  // Messages table for advisor<->client communication per project
+  await pool.query(`
+    create table if not exists project_messages (
+      id serial primary key,
+      project_id int not null references projects(id) on delete cascade,
+      user_id int references users(id) on delete set null,
+      content text not null,
+      created_at timestamptz default now()
+    );
+  `);
+
+  // Files table for project docs (metadata only; files stored on local disk for MVP)
+  await pool.query(`
+    create table if not exists project_files (
+      id serial primary key,
+      project_id int not null references projects(id) on delete cascade,
+      user_id int references users(id) on delete set null,
+      filename text not null,
+      originalname text not null,
+      mimetype text,
+      size int,
+      created_at timestamptz default now()
+    );
+  `);
+  // Add advisor_only visibility flag so some files are hidden from clients
+  await pool.query('alter table project_files add column if not exists advisor_only boolean default false');
+
+  // Stage change approvals table for client approval workflow
+  await pool.query(`
+    create table if not exists stage_change_approvals (
+      id serial primary key,
+      project_id int not null references projects(id) on delete cascade,
+      advisor_id int not null references users(id) on delete cascade,
+      from_stage text not null,
+      to_stage text not null,
+      message text,
+      attachment_file_id int references project_files(id) on delete set null,
+      status text not null default 'pending',
+      created_at timestamptz default now(),
+      approved_at timestamptz,
+      rejected_at timestamptz
+    );
+  `);
+  await pool.query('create index if not exists idx_stage_approvals_project_status on stage_change_approvals(project_id, status)');
+
+  // Create agent_ideas table to store ideation specs
+  await pool.query(`
+    create table if not exists agent_ideas (
+      id varchar primary key,
+      title text not null,
+      summary text not null,
+      steps jsonb not null,
+      agent_stack jsonb not null,
+      client_requirements jsonb not null,
+      conversation_history jsonb,
+      status text default 'draft',
+      agent_type text,
+      implementation_estimate jsonb,
+      security_considerations jsonb,
+      future_enhancements jsonb,
+      build_phases jsonb,
+      created_at timestamptz default now(),
+      updated_at timestamptz,
+      user_id int references users(id) on delete set null,
+      project_id int references projects(id) on delete set null
+    );
+  `);
+  
+  // Add build_phases column if it doesn't exist
+  await pool.query('alter table agent_ideas add column if not exists build_phases jsonb');
+
+  // Create project_credentials table to link projects with credentials
+  await pool.query(`
+    create table if not exists project_credentials (
+      id serial primary key,
+      project_id int not null references projects(id) on delete cascade,
+      credential_id int not null references credentials(id) on delete cascade,
+      created_at timestamptz default now(),
+      unique(project_id, credential_id)
+    );
+  `);
+
+  // Add chat_history column to projects table for draft functionality
+  await pool.query(`
+    ALTER TABLE projects 
+    ADD COLUMN IF NOT EXISTS chat_history JSONB DEFAULT NULL
+  `);
+
+  // Add index on status for better query performance
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)
+  `);
+
+  // Create credentials table for storing user credentials
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS credentials (
+      id SERIAL PRIMARY KEY,
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL, -- 'text' or 'file'
+      value TEXT, -- for text credentials
+      file_data BYTEA, -- for file uploads
+      file_name TEXT, -- original file name
+      is_predefined BOOLEAN DEFAULT FALSE, -- for seeded credentials
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  // Add index on user_id for better query performance
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_credentials_user_id ON credentials(user_id)
+  `);
+  
+  // Create advisor_requests table for lead capture
+  await pool.query(`
+    create table if not exists advisor_requests (
+      id serial primary key,
+      name varchar(255) not null,
+      email varchar(255) not null,
+      company_url varchar(255),
+      time_slot varchar(255) not null,
+      status varchar(50) default 'pending',
+      created_at timestamptz default now()
+    )
+  `);
+  
+  // Create schedule_requests table for client-advisor meetings
+  await pool.query(`
+    create table if not exists schedule_requests (
+      id serial primary key,
+      client_id int not null references users(id) on delete cascade,
+      advisor_id int not null references users(id) on delete cascade,
+      time_slot varchar(255) not null,
+      meeting_description text,
+      status varchar(50) default 'pending',
+      created_at timestamptz default now()
+    )
+  `);
+
+  // Webinars master table
+  await pool.query(`
+    create table if not exists webinars (
+      id serial primary key,
+      title text not null,
+      description text,
+      datetime text not null,
+      duration text,
+      image_url text,
+      created_at timestamptz default now()
+    )
+  `);
+
+  // Webinar signups
+  await pool.query(`
+    create table if not exists webinar_signups (
+      id serial primary key,
+      webinar_id int not null references webinars(id) on delete cascade,
+      client_id int not null references users(id) on delete cascade,
+      created_at timestamptz default now(),
+      unique (webinar_id, client_id)
+    )
+  `);
+
+  // Seed 3 upcoming webinars if none exist
+  try {
+    const wcnt = await pool.query('select count(*)::int as c from webinars');
+    if ((wcnt.rows[0]?.c || 0) === 0) {
+      const now = new Date();
+      const fmt = (d) => d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short' }).replace(',', '');
+      const d1 = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // +3 days
+      const d2 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // +7 days
+      const d3 = new Date(now.getTime() + 12 * 24 * 60 * 60 * 1000); // +12 days
+      await pool.query(
+        'insert into webinars(title, description, datetime, duration, image_url) values ($1,$2,$3,$4,$5), ($6,$7,$8,$9,$10), ($11,$12,$13,$14,$15)',
+        [
+          'Live Scope Clinic: Define Your First AI Project',
+          'Hands-on framework we use to turn ideas into shippable AI projects — with examples and Q&A.',
+          fmt(d1),
+          '45 min',
+          '',
+          'RAG Patterns That Actually Ship',
+          'From quick wins to production-grade retrieval: chunking, indexing, reranking, evaluation, observability.',
+          fmt(d2),
+          '40 min',
+          '',
+          'Ops Automation: 5 Workflows That Print Time',
+          'Reporting, enrichment, ticket triage, QA, and handoffs — how we guarantee quality with AI.',
+          fmt(d3),
+          '40 min',
+          ''
+        ]
+      );
+    }
+  } catch {}
+
+  // Ensure seeded webinars have rich descriptions and images (idempotent updates)
+  try {
+    await pool.query(
+      `update webinars set description=$2, image_url=$3 where title=$1 and (image_url is null or image_url='')`,
+      [
+        'Live Scope Clinic: Define Your First AI Project',
+        'In this live working session, we walk through the exact scoping playbook we use to transform a raw idea into a shippable AI project. We will cover success criteria, guardrails, data considerations, and an MVP slice you can build next week. Bring a real idea—there will be live Q&A and examples from recent launches.',
+        'https://images.unsplash.com/photo-1551836022-4c4c79ecde51?auto=format&fit=crop&w=1600&q=80'
+      ]
+    );
+    await pool.query(
+      `update webinars set description=$2, image_url=$3 where title=$1 and (image_url is null or image_url='')`,
+      [
+        'RAG Patterns That Actually Ship',
+        'We break down retrieval-augmented generation (RAG) patterns that consistently make it to production. Learn how to choose chunking, embedding, and indexing strategies, when to rerank, how to evaluate responses, and what to log for observability. Includes concrete architectures you can replicate.',
+        'https://images.unsplash.com/photo-1518779578993-ec3579fee39f?auto=format&fit=crop&w=1600&q=80'
+      ]
+    );
+    await pool.query(
+      `update webinars set description=$2, image_url=$3 where title=$1 and (image_url is null or image_url='')`,
+      [
+        'Ops Automation: 5 Workflows That Print Time',
+        'See the five automation workflows we deploy most often to save teams hours per week: reporting, enrichment, ticket triage, QA, and handoffs. We will show before/after swimlanes, failure handling, and how to keep humans-in-the-loop without slowing throughput. Real examples and templates included.',
+        'https://images.unsplash.com/photo-1504384764586-bb4cdc1707b0?auto=format&fit=crop&w=1600&q=80'
+      ]
+    );
+  } catch {}
+
+  // Project proposals for advisor approval
+  await pool.query(`
+    create table if not exists project_proposals (
+      id serial primary key,
+      project_id int not null references projects(id) on delete cascade,
+      name text not null,
+      cost text,
+      hours text,
+      api_fees text,
+      human_cost text,
+      human_timeline text,
+      status text default 'pending',
+      created_at timestamptz default now(),
+      accepted_at timestamptz,
+      unique(project_id)
+    )
+  `);
+
+  // Email templates
+  await pool.query(`
+    create table if not exists email_templates (
+      id serial primary key,
+      name text not null,
+      key text unique,
+      subject text not null,
+      body text not null,
+      is_system boolean default false,
+      created_at timestamptz default now(),
+      updated_at timestamptz default now()
+    )
+  `);
+  // Seed core templates if missing
+  await pool.query(`insert into email_templates(name, key, subject, body, is_system)
+    select 'Welcome to Hyah! AI', 'signup_welcome', 'Welcome to Hyah! AI – your account details',
+      'Hi {{name}},\n\nWelcome to Hyah! AI. Your account is ready.\n\nUsername: {{username}}\nPassword: {{password}}\nLogin: {{login_url}}\n\n— Hyah! AI Team', true
+    where not exists (select 1 from email_templates where key='signup_welcome')`);
+  await pool.query(`insert into email_templates(name, key, subject, body, is_system)
+    select 'Password Reset', 'password_reset', 'Reset your Hyah! AI password',
+      'Hi {{name}},\n\nUse the link below to reset your password.\n{{reset_url}}\n\nIf you did not request this, you can ignore this email.', true
+    where not exists (select 1 from email_templates where key='password_reset')`);
+  await pool.query(`insert into email_templates(name, key, subject, body, is_system)
+    select 'Project Completed', 'project_completed', 'Your project {{project_name}} is completed',
+      'Hi {{name}},\n\nGreat news—your project {{project_name}} has been marked Completed.\nOpen it here: {{project_url}}\n\nThank you for building with Hyah! AI!', true
+    where not exists (select 1 from email_templates where key='project_completed')`);
+
+  // Email sequences
+  await pool.query(`
+    create table if not exists email_sequences (
+      id serial primary key,
+      name text not null,
+      description text,
+      trigger text default 'manual',
+      is_active boolean default true,
+      created_at timestamptz default now()
+    )
+  `);
+
+  // Email sequence steps
+  await pool.query(`
+    create table if not exists email_sequence_steps (
+      id serial primary key,
+      sequence_id int not null references email_sequences(id) on delete cascade,
+      step_order int default 1,
+      delay_minutes int default 0,
+      template_id int references email_templates(id) on delete set null,
+      notes text,
+      created_at timestamptz default now()
+    )
+  `);
+
+  // Email outbox (queue)
+  await pool.query(`
+    create table if not exists email_outbox (
+      id serial primary key,
+      to_user_id int references users(id) on delete set null,
+      to_email text,
+      subject text not null,
+      body text not null,
+      template_id int references email_templates(id) on delete set null,
+      metadata jsonb default '{}'::jsonb,
+      status text default 'queued',
+      attempts int default 0,
+      last_error text,
+      scheduled_for timestamptz,
+      sent_at timestamptz,
+      updated_at timestamptz default now(),
+      created_at timestamptz default now()
+    )
+  `);
+  // Ensure new columns exist when table was created before these fields were added
+  await pool.query('alter table email_outbox add column if not exists attempts int default 0');
+  await pool.query('alter table email_outbox add column if not exists last_error text');
+  await pool.query('alter table email_outbox add column if not exists updated_at timestamptz default now()');
+  await pool.query('alter table email_outbox add column if not exists sent_at timestamptz');
+
+  // Email provider settings (placeholder for SMTP)
+  await pool.query(`
+    create table if not exists email_settings (
+      id serial primary key,
+      provider text default 'smtp',
+      smtp_host text,
+      smtp_port int,
+      smtp_username text,
+      smtp_password text,
+      smtp_secure boolean default false,
+      from_name text,
+      from_email text,
+      created_at timestamptz default now(),
+      updated_at timestamptz default now()
+    )
+  `);
+
+  await pool.query(`
+    create table if not exists password_reset_tokens (
+      token text primary key,
+      user_id int not null references users(id) on delete cascade,
+      created_at timestamptz default now(),
+      expires_at timestamptz not null
+    )
+  `);
+}
+
+// Seed predefined credentials for new users
+async function seedUserCredentials(userId) {
+  const predefinedCredentials = [
+    { name: 'OpenAI Key', service: 'OpenAI', key: 'api_key', type: 'text' },
+    { name: 'Gemini Key', service: 'Google Gemini', key: 'api_key', type: 'text' },
+    { name: 'Anthropic Key', service: 'Anthropic', key: 'api_key', type: 'text' },
+    { name: 'Google Drive Folder', service: 'Google Drive', key: 'folder_url', type: 'text' }
+  ];
+  
+  for (const cred of predefinedCredentials) {
+    await pool.query(
+      'INSERT INTO credentials (user_id, service, key, name, type, value, is_predefined) VALUES ($1, $2, $3, $4, $5, $6, TRUE) ON CONFLICT DO NOTHING',
+      [userId, cred.service, cred.key, cred.name, cred.type, '']
+    );
+  }
+}
+
+// Simple auth middleware using Bearer token
+function auth(...requiredRoles) {
+  return async function (req, res, next) {
+    try {
+      const authHeader = req.headers.authorization || '';
+      let token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+      // Fallback: read from cookie (xsourcing_token) or query param (?token=)
+      if (!token) {
+        const cookieHeader = req.headers.cookie || '';
+        if (cookieHeader) {
+          const parts = cookieHeader.split(';').map(s => s.trim());
+          for (const p of parts) {
+            const [k, v] = p.split('=');
+            if (k === 'xsourcing_token' && v) { token = decodeURIComponent(v); break; }
+          }
+        }
+      }
+      if (!token && req.query && (req.query.token || req.query.auth)) {
+        token = String(req.query.token || req.query.auth);
+      }
+
+      if (!token) return res.status(401).json({ ok: false, error: 'Missing token' });
+      const payload = jwt.verify(token, JWT_SECRET);
+      req.user = payload;
+      
+      // Check if user role matches any of the required roles
+      if (requiredRoles.length > 0 && !requiredRoles.includes(payload.role)) {
+        return res.status(403).json({ ok: false, error: 'Forbidden' });
+      }
+      
+      next();
+    } catch (e) {
+      return res.status(401).json({ ok: false, error: 'Invalid token' });
+    }
+  };
+}
+
+// Health check endpoint handler (shared by /health and /healthz)
+const healthCheck = async (_req, res) => {
+  // ALWAYS return 200 OK - server is alive if this responds
+  console.log('🏥 Health check received');
+  
+  // Don't even check database - just return OK
+  // Database issues should NOT prevent health checks from passing
+  res.status(200).json({ 
+    ok: true, 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    port: process.env.PORT || 8080
+  });
+};
+
+// Health check endpoints - both /health and /healthz (Render default)
+app.get('/health', healthCheck);
+app.get('/healthz', healthCheck);
+
+// seed demo users endpoint (admin/advisor/client demo) and example projects
+app.post('/seed-demo', async (_req, res) => {
+  try {
+    await ensureSchema();
+
+    const inserts = [
+      ['admin', 'Admin User', 'admin@example.com', 'admin', 'admin'],
+      ['advisor', 'Advisor User', 'advisor@example.com', 'advisor', 'advisor'],
+      ['client', 'Client User', 'client@example.com', 'client', 'client'],
+    ];
+    const ids = {};
+    for (const [role, name, email, username, password] of inserts) {
+      const r = await pool.query(
+        'insert into users(role,name,email,username,password) values($1,$2,$3,$4,$5) on conflict(username) do update set role=excluded.role returning id, role',
+        [role, name, email, username, password]
+      );
+      ids[role] = r.rows[0].id;
+      // Seed credentials for client user
+      if (role === 'client') {
+        await seedUserCredentials(ids[role]);
+      }
+    }
+    // map client to advisor
+    await pool.query(
+      'insert into advisor_clients(advisor_id, client_id) values($1,$2) on conflict do nothing',
+      [ids['advisor'], ids['client']]
+    );
+
+    // seed some projects for the client
+    await pool.query(
+      `insert into projects(client_id, name, status, eta) values
+        ($1, 'Social content pipeline', 'In production', '2 days'),
+        ($1, 'Reporting deck automation', 'In production', '4 days'),
+        ($1, 'CRM enrichment agent', 'Completed', null)
+      on conflict do nothing`,
+      [ids['client']]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// simple demo login
+app.post('/login', async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ ok: false, error: 'Missing credentials' });
+  try {
+    const r = await pool.query('select id, role, name, password as hash from users where username=$1', [username]);
+    if (r.rowCount === 0) return res.status(401).json({ ok: false, error: 'Invalid credentials' });
+    const row = r.rows[0];
+
+    // Support both hashed (new) and plain (legacy demo) passwords
+    let valid = false;
+    const stored = row.hash || '';
+    if (stored.startsWith('$2')) {
+      valid = await bcrypt.compare(password, stored);
+    } else {
+      valid = stored === password;
+    }
+    if (!valid) return res.status(401).json({ ok: false, error: 'Invalid credentials' });
+
+    const user = { id: row.id, role: row.role, name: row.name };
+    let clients = [];
+    if (user.role === 'advisor') {
+      const cr = await pool.query(
+        'select u.id, u.name, u.email from advisor_clients ac join users u on ac.client_id=u.id where ac.advisor_id=$1',
+        [user.id]
+      );
+      clients = cr.rows;
+    }
+    const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ ok: true, token, user, clients });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// list users for admin
+// Admin endpoints (JWT required)
+app.get('/admin/advisor-requests', auth('admin'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      'select * from advisor_requests order by created_at desc limit 20'
+    );
+    res.json({ ok: true, requests: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/admin/clients', auth('admin'), async (_req, res) => {
+  try {
+    const r = await pool.query("select id, name, email, username, company_name, website_url from users where role='client' order by id asc");
+    res.json({ ok: true, clients: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/admin/advisors', auth('admin'), async (_req, res) => {
+  try {
+    const r = await pool.query("select id, name, email, username, phone from users where role='advisor' order by id asc");
+    res.json({ ok: true, advisors: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/admin/users', auth('admin'), async (req, res) => {
+  try {
+    const { role, name, email, username, password, advisorId, companyName, websiteUrl, phone } = req.body || {};
+    if (!role || !name || !email || !username || !password) return res.status(400).json({ ok: false, error: 'Missing fields' });
+    if (!['advisor', 'client'].includes(role)) return res.status(400).json({ ok: false, error: 'Role must be advisor or client' });
+    
+    // Hash the password before storing
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Check if username or email already exists
+    const existing = await pool.query('SELECT username, email FROM users WHERE username = $1 OR email = $2', [username, email]);
+    if (existing.rowCount > 0) {
+      const existingUser = existing.rows[0];
+      if (existingUser.username === username) {
+        return res.status(400).json({ ok: false, error: `Username "${username}" is already taken. Please choose a different username.` });
+      }
+      if (existingUser.email === email) {
+        return res.status(400).json({ ok: false, error: `Email "${email}" is already registered. Please use a different email.` });
+      }
+    }
+    
+    const r = await pool.query('insert into users(role,name,email,username,password,company_name,website_url,phone) values($1,$2,$3,$4,$5,$6,$7,$8) returning id', [role, name, email, username, hashedPassword, companyName || null, websiteUrl || null, phone || null]);
+    const id = r.rows[0].id;
+    if (role === 'client' && advisorId) {
+      await pool.query('insert into advisor_clients(advisor_id, client_id) values($1,$2) on conflict do nothing', [advisorId, id]);
+    }
+    // Seed predefined credentials for client users
+    if (role === 'client') {
+      await seedUserCredentials(id);
+      // Create default AI Ecosystem
+      await createDefaultEcosystem(id);
+    }
+    res.json({ ok: true, id });
+  } catch (e) {
+    console.error('Error creating user:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.put('/admin/users/:id', auth('admin'), async (req, res) => {
+  try {
+    const { name, email, username, password, companyName, websiteUrl, phone } = req.body || {};
+    await pool.query('update users set name=coalesce($1,name), email=coalesce($2,email), username=coalesce($3,username), password=coalesce($4,password), company_name=coalesce($5,company_name), website_url=coalesce($6,website_url), phone=coalesce($7,phone) where id=$8', [name, email, username, password, companyName, websiteUrl, phone, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/admin/users/:id', auth('admin'), async (req, res) => {
+  try {
+    await pool.query('delete from users where id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get advisors assigned to a client
+app.get('/admin/clients/:id/advisors', auth('admin'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.id);
+    
+    const result = await pool.query(
+      `SELECT u.id, u.name, u.email, u.phone 
+       FROM users u 
+       JOIN advisor_clients ac ON u.id = ac.advisor_id 
+       WHERE ac.client_id = $1`,
+      [clientId]
+    );
+    
+    res.json({ ok: true, advisors: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update advisors assigned to a client
+app.put('/admin/clients/:id/advisors', auth('admin'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.id);
+    const { advisorIds } = req.body;
+    
+    if (!Array.isArray(advisorIds)) {
+      return res.status(400).json({ ok: false, error: 'advisorIds must be an array' });
+    }
+    
+    // Remove all existing assignments
+    await pool.query('DELETE FROM advisor_clients WHERE client_id = $1', [clientId]);
+    
+    // Add new assignments
+    for (const advisorId of advisorIds) {
+      await pool.query(
+        'INSERT INTO advisor_clients (advisor_id, client_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [advisorId, clientId]
+      );
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get single client with advisor info
+app.get('/admin/clients/:id', auth('admin'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.id);
+    const clientResult = await pool.query(
+      'select id, name, email, username, company_name, website_url, phone from users where id=$1 and role=$2',
+      [clientId, 'client']
+    );
+    if (clientResult.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Client not found' });
+    }
+    
+    const client = clientResult.rows[0];
+    
+    // Get assigned advisor
+    const advisorResult = await pool.query(
+      'select u.id, u.name, u.email, u.phone from advisor_clients ac join users u on ac.advisor_id = u.id where ac.client_id = $1',
+      [clientId]
+    );
+    
+    client.advisor = advisorResult.rowCount > 0 ? advisorResult.rows[0] : null;
+    
+    res.json({ ok: true, client });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update client info
+app.put('/admin/clients/:id', auth('admin'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.id);
+    const { name, email, username, companyName, websiteUrl, phone, advisorId } = req.body || {};
+    
+    // Update client info
+    await pool.query(
+      'update users set name=$1, email=$2, username=$3, company_name=$4, website_url=$5, phone=$6 where id=$7 and role=$8',
+      [name, email, username, companyName, websiteUrl, phone, clientId, 'client']
+    );
+    
+    // Update advisor assignment if provided
+    if (advisorId !== undefined) {
+      // Remove existing assignment
+      await pool.query('delete from advisor_clients where client_id=$1', [clientId]);
+      
+      // Add new assignment if advisorId is not null
+      if (advisorId) {
+        await pool.query('insert into advisor_clients(advisor_id, client_id) values($1,$2)', [advisorId, clientId]);
+      }
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Assign or reassign a client to an advisor
+app.post('/admin/assign', auth('admin'), async (req, res) => {
+  try {
+    const { advisorId, clientId } = req.body || {};
+    if (!advisorId || !clientId) return res.status(400).json({ ok: false, error: 'advisorId and clientId required' });
+    await pool.query('insert into advisor_clients(advisor_id, client_id) values($1,$2) on conflict (advisor_id, client_id) do nothing', [advisorId, clientId]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Advisor endpoints
+app.get('/advisor/schedule-requests', auth('advisor'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `select sr.*, u.name as client_name, u.email as client_email 
+       from schedule_requests sr 
+       join users u on sr.client_id = u.id 
+        where sr.advisor_id = $1 
+          and sr.status = 'pending'
+          and coalesce(sr.meeting_description,'') not ilike 'webinar signup:%'
+       order by sr.created_at desc`,
+      [req.user.id]
+    );
+    res.json({ ok: true, requests: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Advisor confirms a scheduled request
+app.post('/advisor/schedule-requests/:id/confirm', auth('advisor'), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await pool.query(
+      `update schedule_requests set status='confirmed' 
+       where id=$1 and advisor_id=$2 and status='pending' returning id`,
+      [id, req.user.id]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ ok: false, error: 'Request not found or already handled' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/advisor/clients', auth('advisor'), async (req, res) => {
+  try {
+    // Check if client_type column exists (backwards compatibility)
+    const columnCheck = await pool.query(
+      `SELECT column_name FROM information_schema.columns 
+       WHERE table_name = 'users' AND column_name = 'client_type'`
+    );
+    
+    const hasClientType = columnCheck.rowCount > 0;
+    
+    let query;
+    if (hasClientType) {
+      query = 'SELECT u.id, u.name, u.email, u.client_type, u.prospect_stage, u.company_name, u.website_url, u.phone FROM advisor_clients ac JOIN users u ON ac.client_id=u.id WHERE ac.advisor_id=$1';
+    } else {
+      // Fallback query without new columns
+      query = 'SELECT u.id, u.name, u.email, u.company_name, u.website_url, u.phone FROM advisor_clients ac JOIN users u ON ac.client_id=u.id WHERE ac.advisor_id=$1';
+    }
+    
+    const r = await pool.query(query, [req.user.id]);
+    
+    // Add default values if columns don't exist
+    const clients = r.rows.map(row => ({
+      ...row,
+      client_type: row.client_type || 'client',
+      prospect_stage: row.prospect_stage || null
+    }));
+    
+    res.json({ ok: true, clients });
+  } catch (e) {
+    console.error('Error in /advisor/clients:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get all companies (clients + prospects) for CRM view
+app.get('/advisor/crm/companies', auth('advisor'), async (req, res) => {
+  try {
+    // Check if client_type column exists
+    const columnCheck = await pool.query(
+      `SELECT column_name FROM information_schema.columns 
+       WHERE table_name = 'users' AND column_name = 'client_type'`
+    );
+    
+    const hasClientType = columnCheck.rowCount > 0;
+    
+    let query;
+    if (hasClientType) {
+      query = `SELECT u.id, u.name, u.email, u.client_type, u.prospect_stage, u.company_name, 
+                      u.website_url, u.phone, u.converted_to_client_at
+               FROM advisor_clients ac 
+               JOIN users u ON ac.client_id=u.id 
+               WHERE ac.advisor_id=$1
+               ORDER BY 
+                 CASE u.client_type 
+                   WHEN 'client' THEN 0 
+                   WHEN 'prospect' THEN 1 
+                   ELSE 2 
+                 END,
+                 u.name`;
+    } else {
+      // Fallback without client_type
+      query = `SELECT u.id, u.name, u.email, u.company_name, 
+                      u.website_url, u.phone
+               FROM advisor_clients ac 
+               JOIN users u ON ac.client_id=u.id 
+               WHERE ac.advisor_id=$1
+               ORDER BY u.name`;
+    }
+    
+    const r = await pool.query(query, [req.user.id]);
+    
+    // Add default values if columns don't exist
+    const companies = r.rows.map(row => ({
+      ...row,
+      client_type: row.client_type || 'prospect', // Default to prospect
+      prospect_stage: row.prospect_stage || 'introduction', // Default to introduction stage
+      converted_to_client_at: row.converted_to_client_at || null,
+      created_at: new Date().toISOString() // Fallback date
+    }));
+    
+    res.json({ ok: true, companies });
+  } catch (e) {
+    console.error('Error in /advisor/crm/companies:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update company type (client/prospect) and prospect stage
+app.put('/advisor/clients/:clientId/crm-status', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const { client_type, prospect_stage } = req.body || {};
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Check if client_type column exists
+    const columnCheck = await pool.query(
+      `SELECT column_name FROM information_schema.columns 
+       WHERE table_name = 'users' AND column_name = 'client_type'`
+    );
+    
+    console.log('Column check result:', columnCheck.rowCount, columnCheck.rows);
+    
+    if (columnCheck.rowCount === 0) {
+      // Columns don't exist yet - try to add them dynamically
+      try {
+        await pool.query(`
+          ALTER TABLE users 
+          ADD COLUMN IF NOT EXISTS client_type TEXT DEFAULT 'client' CHECK (client_type IN ('client', 'prospect')),
+          ADD COLUMN IF NOT EXISTS prospect_stage TEXT CHECK (prospect_stage IN ('introduction', 'warm', 'likely_close', NULL)),
+          ADD COLUMN IF NOT EXISTS converted_to_client_at TIMESTAMP
+        `);
+        console.log('Columns added successfully');
+      } catch (alterError) {
+        console.error('Failed to add columns:', alterError);
+        return res.status(503).json({ 
+          ok: false, 
+          error: 'CRM features not available. Migration failed: ' + alterError.message 
+        });
+      }
+    }
+    
+    // Validate client_type
+    if (client_type && !['client', 'prospect'].includes(client_type)) {
+      return res.status(400).json({ ok: false, error: 'Invalid client_type' });
+    }
+    
+    // Validate prospect_stage
+    if (prospect_stage && !['introduction', 'warm', 'likely_close', null].includes(prospect_stage)) {
+      return res.status(400).json({ ok: false, error: 'Invalid prospect_stage' });
+    }
+    
+    // Build update query
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+    
+    if (client_type !== undefined) {
+      updates.push(`client_type = $${paramCount++}`);
+      values.push(client_type);
+      
+      // If converting to client, set timestamp and clear prospect_stage
+      if (client_type === 'client') {
+        updates.push(`converted_to_client_at = NOW()`);
+        updates.push(`prospect_stage = NULL`);
+      }
+    }
+    
+    if (prospect_stage !== undefined && client_type !== 'client') {
+      updates.push(`prospect_stage = $${paramCount++}`);
+      values.push(prospect_stage);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ ok: false, error: 'No updates provided' });
+    }
+    
+    values.push(clientId);
+    
+    await pool.query(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount}`,
+      values
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error updating CRM status:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update client/prospect company information
+app.put('/advisor/clients/:clientId/update-info', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const { name, email, company_name, website_url, phone } = req.body || {};
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Validate required fields
+    if (!name || !email) {
+      return res.status(400).json({ ok: false, error: 'Name and email are required' });
+    }
+    
+    // Check if email is already used by another user
+    const emailCheck = await pool.query(
+      'SELECT id FROM users WHERE email = $1 AND id != $2',
+      [email, clientId]
+    );
+    if (emailCheck.rowCount > 0) {
+      return res.status(400).json({ ok: false, error: 'Email is already in use by another user' });
+    }
+    
+    // Update the user record
+    await pool.query(
+      `UPDATE users 
+       SET name = $1, email = $2, company_name = $3, website_url = $4, phone = $5
+       WHERE id = $6`,
+      [name, email, company_name || null, website_url || null, phone || null, clientId]
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error updating company information:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Advisor creates a new client/prospect and is automatically assigned to them
+app.post('/advisor/clients', auth('advisor'), async (req, res) => {
+  try {
+    const { name, email, username, password, companyName, websiteUrl, clientType, prospectStage } = req.body || {};
+    if (!name || !email || !username || !password) {
+      return res.status(400).json({ ok: false, error: 'Name, email, username, and password are required' });
+    }
+    
+    // Hash the password before storing
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Check if username or email already exists
+    const existing = await pool.query('SELECT username, email FROM users WHERE username = $1 OR email = $2', [username, email]);
+    if (existing.rowCount > 0) {
+      const existingUser = existing.rows[0];
+      if (existingUser.username === username) {
+        return res.status(400).json({ ok: false, error: `Username "${username}" is already taken. Please choose a different username.` });
+      }
+      if (existingUser.email === email) {
+        return res.status(400).json({ ok: false, error: `Email "${email}" is already registered. Please use a different email.` });
+      }
+    }
+    
+    // Create the client/prospect user
+    const typeToUse = clientType || 'client';
+    // Default prospects to 'introduction' stage if no stage specified
+    const stageToUse = typeToUse === 'prospect' ? (prospectStage || 'introduction') : null;
+    
+    const result = await pool.query(
+      `INSERT INTO users(role, name, email, username, password, company_name, website_url, client_type, prospect_stage) 
+       VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      ['client', name, email, username, hashedPassword, companyName || null, websiteUrl || null, typeToUse, stageToUse]
+    );
+    const clientId = result.rows[0].id;
+    
+    // Automatically assign this client to ALL advisors (default visibility)
+    const advisors = await pool.query('SELECT id FROM users WHERE role = $1', ['advisor']);
+    for (const advisor of advisors.rows) {
+      await pool.query(
+        'INSERT INTO advisor_clients(advisor_id, client_id) VALUES($1, $2) ON CONFLICT DO NOTHING',
+        [advisor.id, clientId]
+      );
+    }
+    
+    // Seed predefined credentials for the client
+    await seedUserCredentials(clientId);
+    
+    // Create default AI Ecosystem
+    await createDefaultEcosystem(clientId);
+    
+    res.json({ ok: true, id: clientId });
+  } catch (e) {
+    console.error('Error creating client:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Advisor aggregated communications (messages across all accessible projects)
+app.get('/advisor/messages', auth('advisor'), async (req, res) => {
+  try {
+    const r = await pool.query(
+      `select 
+         m.id,
+         m.project_id,
+         m.user_id,
+         m.content,
+         m.created_at,
+         p.name as project_name,
+         p.client_id,
+         uc.name as client_name,
+         ua.name as author_name,
+         ua.role as author_role
+       from project_messages m
+       join projects p on m.project_id = p.id
+       join advisor_clients ac on ac.client_id = p.client_id and ac.advisor_id = $1
+       left join users ua on m.user_id = ua.id
+       left join users uc on p.client_id = uc.id
+       order by m.created_at desc
+       limit 500`,
+      [req.user.id]
+    );
+    res.json({ ok: true, messages: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Advisor send message to a specific project
+app.post('/advisor/messages', auth('advisor'), async (req, res) => {
+  try {
+    const { projectId, content } = req.body || {};
+    const project_id = Number(projectId);
+    if (!project_id || !content || !content.trim()) return res.status(400).json({ ok: false, error: 'projectId and content required' });
+    if (!(await ensureAdvisorAccess(project_id, req.user.id))) return res.status(403).json({ ok: false, error: 'Access denied' });
+    await pool.query('insert into project_messages(project_id, user_id, content) values($1,$2,$3)', [project_id, req.user.id, content]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get single client details for advisor
+app.get('/advisor/clients/:clientId', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    
+    // Verify advisor has access to this client
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Check if client_type column exists
+    const columnCheck = await pool.query(
+      `SELECT column_name FROM information_schema.columns 
+       WHERE table_name = 'users' AND column_name = 'client_type'`
+    );
+    
+    const hasClientType = columnCheck.rowCount > 0;
+    
+    let query;
+    if (hasClientType) {
+      query = 'SELECT id, name, email, company_name, website_url, phone, client_type, prospect_stage, converted_to_client_at FROM users WHERE id=$1 AND role=$2';
+    } else {
+      query = 'SELECT id, name, email, company_name, website_url, phone FROM users WHERE id=$1 AND role=$2';
+    }
+    
+    const r = await pool.query(query, [clientId, 'client']);
+    
+    if (r.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Client not found' });
+    }
+    
+    // Add default values if columns don't exist
+    const client = {
+      ...r.rows[0],
+      client_type: r.rows[0].client_type || 'prospect',
+      prospect_stage: r.rows[0].prospect_stage || 'introduction',
+      converted_to_client_at: r.rows[0].converted_to_client_at || null
+    };
+    
+    res.json({ ok: true, client });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ===== Financial Records Endpoints =====
+
+// Get financial records for a specific client/prospect
+app.get('/advisor/clients/:clientId/financial-records', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    
+    // Verify advisor has access to this client
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Get financial records
+    const records = await pool.query(
+      `SELECT id, user_id, month, year, contract_value, is_consistent_mrr, notes, created_at, updated_at
+       FROM financial_records 
+       WHERE user_id = $1 
+       ORDER BY year ASC, month ASC`,
+      [clientId]
+    );
+    
+    res.json({ ok: true, records: records.rows });
+  } catch (e) {
+    console.error('Error fetching financial records:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Create or update financial records for a client/prospect
+app.post('/advisor/clients/:clientId/financial-records', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const { records, mode } = req.body || {}; // mode can be 'consistent' or 'custom'
+    
+    // Verify advisor has access to this client
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    if (!records || !Array.isArray(records)) {
+      return res.status(400).json({ ok: false, error: 'Records array required' });
+    }
+    
+    // Insert or update records
+    for (const record of records) {
+      const { month, year, contract_value, is_consistent_mrr, notes } = record;
+      
+      await pool.query(
+        `INSERT INTO financial_records (user_id, month, year, contract_value, is_consistent_mrr, notes, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+         ON CONFLICT (user_id, month, year) 
+         DO UPDATE SET 
+           contract_value = EXCLUDED.contract_value,
+           is_consistent_mrr = EXCLUDED.is_consistent_mrr,
+           notes = EXCLUDED.notes,
+           updated_at = NOW()`,
+        [clientId, month, year, contract_value || 0, is_consistent_mrr !== false, notes || null]
+      );
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error saving financial records:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update a single financial record
+app.put('/advisor/clients/:clientId/financial-records/:recordId', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const recordId = Number(req.params.recordId);
+    const { contract_value, notes } = req.body || {};
+    
+    // Verify advisor has access to this client
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Update the record
+    const result = await pool.query(
+      `UPDATE financial_records 
+       SET contract_value = $1, notes = $2, updated_at = NOW()
+       WHERE id = $3 AND user_id = $4
+       RETURNING *`,
+      [contract_value, notes || null, recordId, clientId]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Record not found' });
+    }
+    
+    res.json({ ok: true, record: result.rows[0] });
+  } catch (e) {
+    console.error('Error updating financial record:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Delete financial records for a client/prospect
+app.delete('/advisor/clients/:clientId/financial-records', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    
+    // Verify advisor has access to this client
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    await pool.query('DELETE FROM financial_records WHERE user_id = $1', [clientId]);
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error deleting financial records:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get financial forecast aggregated data for advisor
+app.get('/advisor/financial-forecast', auth('advisor'), async (req, res) => {
+  try {
+    const { view } = req.query; // 'contracted', 'pipeline', or 'likely'
+    
+    // Get all companies the advisor manages
+    const companies = await pool.query(
+      `SELECT u.id, u.name, u.company_name, u.client_type, u.prospect_stage
+       FROM advisor_clients ac
+       JOIN users u ON ac.client_id = u.id
+       WHERE ac.advisor_id = $1`,
+      [req.user.id]
+    );
+    
+    // Get financial records for all companies
+    const records = await pool.query(
+      `SELECT fr.user_id, fr.month, fr.year, fr.contract_value, u.name, u.company_name, u.client_type, u.prospect_stage
+       FROM financial_records fr
+       JOIN users u ON fr.user_id = u.id
+       JOIN advisor_clients ac ON ac.client_id = u.id
+       WHERE ac.advisor_id = $1
+       ORDER BY fr.year ASC, fr.month ASC`,
+      [req.user.id]
+    );
+    
+    // Aggregate data by month/year with weighted values based on view type
+    const aggregated = {};
+    
+    records.rows.forEach(record => {
+      const key = `${record.year}-${String(record.month).padStart(2, '0')}`;
+      
+      if (!aggregated[key]) {
+        aggregated[key] = {
+          month: record.month,
+          year: record.year,
+          contracted: 0,
+          pipeline: 0,
+          likely: 0,
+          breakdown: {
+            clients: 0,
+            likely_close: 0,
+            warm: 0,
+            introduction: 0
+          }
+        };
+      }
+      
+      const value = parseFloat(record.contract_value) || 0;
+      
+      // Add to pipeline (all prospects + clients)
+      aggregated[key].pipeline += value;
+      
+      // Add based on client type and prospect stage
+      if (record.client_type === 'client') {
+        aggregated[key].contracted += value;
+        aggregated[key].likely += value;
+        aggregated[key].breakdown.clients += value;
+      } else if (record.client_type === 'prospect') {
+        // Weighted values for likely forecast
+        // Default to 'introduction' if no stage is set
+        const stage = record.prospect_stage || 'introduction';
+        
+        if (stage === 'likely_close') {
+          aggregated[key].likely += value; // 100%
+          aggregated[key].breakdown.likely_close += value;
+        } else if (stage === 'warm') {
+          aggregated[key].likely += value * 0.5; // 50%
+          aggregated[key].breakdown.warm += value;
+        } else if (stage === 'introduction') {
+          aggregated[key].likely += value * 0.2; // 20%
+          aggregated[key].breakdown.introduction += value;
+        }
+      }
+    });
+    
+    // Convert to array and sort by date
+    const forecastData = Object.keys(aggregated)
+      .sort()
+      .map(key => ({
+        period: key,
+        ...aggregated[key]
+      }));
+    
+    res.json({ 
+      ok: true, 
+      forecast: forecastData,
+      companies: companies.rows 
+    });
+  } catch (e) {
+    console.error('Error fetching financial forecast:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get client credentials for advisor (with values for advisors to use)
+app.get('/advisor/clients/:clientId/credentials', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    
+    // Verify advisor has access to this client
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Get credentials WITH values (advisors need access to use them)
+    const result = await pool.query(
+      'SELECT id, name, type, value, file_name, is_predefined FROM credentials WHERE user_id = $1 ORDER BY is_predefined DESC, name ASC',
+      [clientId]
+    );
+    
+    res.json({ ok: true, credentials: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get client projects for advisor
+// Get all projects across all advisor's clients
+app.get('/advisor/projects', auth('advisor'), async (req, res) => {
+  try {
+    // Get all projects for clients assigned to this advisor
+    const r = await pool.query(
+      `select p.id, p.name, p.status, p.eta, p.client_id, u.name as client_name
+       from projects p
+       join advisor_clients ac on p.client_id = ac.client_id
+       join users u on p.client_id = u.id
+       where ac.advisor_id = $1
+       order by p.id desc`,
+      [req.user.id]
+    );
+    
+    res.json({ ok: true, projects: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/advisor/clients/:clientId/projects', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    
+    // Verify advisor has access to this client
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Get client projects
+    const r = await pool.query(
+      'select id, name, status, eta from projects where client_id=$1 order by id desc',
+      [clientId]
+    );
+    
+    res.json({ ok: true, projects: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+
+// Get single project for advisor
+app.get('/advisor/projects/:projectId', auth('advisor'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    
+    // Verify advisor has access to this project through client assignment
+    const r = await pool.query(
+      `select p.* from projects p 
+       join advisor_clients ac on p.client_id = ac.client_id 
+       where p.id = $1 and ac.advisor_id = $2`,
+      [projectId, req.user.id]
+    );
+    
+    if (r.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Project not found or access denied' });
+    }
+    
+    res.json({ ok: true, project: r.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update project for advisor
+app.put('/advisor/projects/:projectId', auth('advisor'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    const { status, eta, project_stage } = req.body || {};
+    
+    // Verify advisor has access to this project
+    const access = await pool.query(
+      `select 1 from projects p 
+       join advisor_clients ac on p.client_id = ac.client_id 
+       where p.id = $1 and ac.advisor_id = $2`,
+      [projectId, req.user.id]
+    );
+    
+    if (access.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Project not found or access denied' });
+    }
+    
+    // Update allowed fields (but NOT project_stage directly - use stage change request instead)
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+    
+    if (status !== undefined) {
+      updates.push(`status = $${paramCount++}`);
+      values.push(status);
+    }
+    
+    if (eta !== undefined) {
+      updates.push(`eta = $${paramCount++}`);
+      values.push(eta);
+    }
+    
+    // Note: project_stage changes now require client approval via stage change requests
+    if (project_stage !== undefined) {
+      updates.push(`project_stage = $${paramCount++}`);
+      values.push(project_stage);
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ ok: false, error: 'No valid fields to update' });
+    }
+    
+    values.push(projectId);
+    
+    await pool.query(
+      `update projects set ${updates.join(', ')} where id = $${paramCount}`,
+      values
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// AI-powered pricing suggestion for proposals
+app.post('/advisor/projects/:projectId/ai-suggest-pricing', auth('advisor'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    if (!(await ensureAdvisorAccess(projectId, req.user.id))) return res.status(403).json({ ok:false, error:'Access denied' });
+    
+    // Get project and idea data
+    const proj = await pool.query('select name from projects where id=$1', [projectId]);
+    if (proj.rowCount === 0) return res.status(404).json({ ok:false, error:'Project not found' });
+    
+    const ideaRes = await pool.query(
+      `select * from agent_ideas where project_id=$1 order by created_at desc limit 1`,
+      [projectId]
+    );
+    if (ideaRes.rowCount === 0) return res.status(404).json({ ok:false, error:'No project specification found' });
+    
+    const idea = ideaRes.rows[0];
+    const projectName = proj.rows[0].name;
+    
+    // Use Gemini to analyze and suggest pricing
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(500).json({ ok: false, error: 'Missing GEMINI_API_KEY' });
+    
+    const genAI = new GoogleGenerativeAI(apiKey, { apiVersion: 'v1' });
+    const model = genAI.getGenerativeModel({ 
+      model: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
+      generationConfig: { temperature: 0.3 }
+    });
+    
+    const prompt = `You are a pricing analyst for an AI-powered development agency. Analyze this project specification and provide accurate pricing estimates.
+
+PROJECT: ${projectName}
+
+SPECIFICATION:
+${JSON.stringify({
+  summary: idea.summary,
+  steps: idea.steps,
+  agent_stack: idea.agent_stack,
+  client_requirements: idea.client_requirements,
+  build_phases: idea.build_phases,
+  security_considerations: idea.security_considerations
+}, null, 2)}
+
+TASK: Generate pricing estimates in JSON format with these fields:
+
+{
+  "human_hours": "Total hours ALL humans involved (developers, designers, QA, PM, etc.) - just the number (e.g., '360', '520', '180')",
+  "human_cost": "MUST equal human_hours × $125 exactly (e.g., if 360 hours then '$45,000', if 520 hours then '$65,000')",
+  "human_timeline": "Store the SAME value as human_hours with ' hours' suffix (e.g., '360 hours', '520 hours', '180 hours')",
+  "ai_hours": "Hours with AI-enabled Cursor team - between 8.5% and 11% of human_hours, NEVER exactly 10% (e.g., '31', '47', '56')",
+  "ai_cost": "AI team cost calculated as: ai_hours × $200/hour exactly (e.g., '$6,200', '$9,400', '$11,200')",
+  "api_fees": "ONE-TIME Cursor AI build API fees - the total cost of LLM API calls to BUILD this project. Minimum $500, scale up based on complexity (e.g., '$1,200', '$2,500', '$850')"
+}
+
+CRITICAL CALCULATION RULES:
+1. Calculate human_hours first based on realistic project analysis
+2. human_cost MUST = human_hours × 125 (verify this calculation!)
+3. human_timeline = human_hours + " hours" (e.g., "360 hours")
+4. ai_hours = human_hours × (random percentage between 0.085 and 0.11, NEVER 0.10) rounded to whole number
+   - Example: 520 hours × 0.091 = 47.32 → round to 47
+   - Example: 360 hours × 0.105 = 37.8 → round to 38
+   - IMPORTANT: Pick a percentage that is NOT 0.10 (not 10%)
+5. ai_cost = ai_hours × 200 (verify this calculation!)
+
+EXAMPLE (verify all math with 9.1% efficiency):
+- Complex AI project needs 520 total human hours
+- human_hours: "520"
+- human_cost: "$65,000" (520 × $125 = $65,000 ✓)
+- human_timeline: "520 hours"
+- ai_hours: "47" (520 × 0.091 = 47.32 → 47 ✓, this is 9.1% not 10%)
+- ai_cost: "$9,400" (47 × $200 = $9,400 ✓)
+- api_fees: "$1,800"
+
+GUIDELINES:
+- Be precise and realistic based on the project specification
+- Consider ALL roles: frontend devs, backend devs, UI/UX designers, QA engineers, project managers, DevOps
+- Consider all phases from the build_phases: Scope, Discovery, UX/UI, Development, Q/C, Launch
+- Break down mentally: how many hours for frontend? backend? design? testing? deployment?
+- API fees are ONE-TIME costs for building the project with AI (NOT monthly recurring):
+  * Simple projects (basic CRUD, few features): $500-$800
+  * Medium projects (multiple integrations, AI features): $1,000-$2,000
+  * Complex projects (advanced AI, multiple services, complex logic): $2,000-$5,000
+  * Enterprise projects (large scale, many features): $5,000+
+- Format costs as strings with $ and commas (e.g., '$15,000', '$1,200')
+- Format hours as plain number strings (e.g., '360', '52')
+- NEVER use approximations or ranges - use exact calculated values
+
+Return ONLY valid JSON with exact calculations, no explanations.`;
+
+    try {
+      const result = await model.generateContent(prompt);
+      const response = result.response.text();
+      
+      // Extract JSON from response
+      let jsonStr = response.trim();
+      if (jsonStr.includes('```json')) {
+        jsonStr = jsonStr.split('```json')[1].split('```')[0].trim();
+      } else if (jsonStr.includes('```')) {
+        jsonStr = jsonStr.split('```')[1].split('```')[0].trim();
+      }
+      
+      const pricing = JSON.parse(jsonStr);
+      
+      // Format the response for the frontend
+      res.json({
+        ok: true,
+        suggestions: {
+          name: projectName,
+          cost: pricing.ai_cost || '',
+          hours: pricing.ai_hours || '',
+          api_fees: pricing.api_fees || '',
+          human_cost: pricing.human_cost || '',
+          human_timeline: pricing.human_timeline || ''
+        }
+      });
+    } catch (e) {
+      console.error('Error generating AI pricing:', e);
+      res.status(500).json({ ok: false, error: 'Failed to generate pricing suggestions' });
+    }
+  } catch (e) { 
+    res.status(500).json({ ok:false, error:e.message }); 
+  }
+});
+
+// Advisor submits a proposal for client approval
+app.post('/advisor/projects/:projectId/proposal', auth('advisor'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    const { name, cost, hours, api_fees, human_cost, human_timeline } = req.body || {};
+    if (!(await ensureAdvisorAccess(projectId, req.user.id))) return res.status(403).json({ ok:false, error:'Access denied' });
+    const proj = await pool.query('select name, client_id from projects where id=$1', [projectId]);
+    if (proj.rowCount===0) return res.status(404).json({ ok:false, error:'Project not found' });
+    const displayName = name || proj.rows[0].name;
+    await pool.query(`insert into project_proposals(project_id, name, cost, hours, api_fees, human_cost, human_timeline, status) 
+                      values($1,$2,$3,$4,$5,$6,$7,'pending')
+                      on conflict (project_id) do update set name=excluded.name, cost=excluded.cost, hours=excluded.hours, api_fees=excluded.api_fees, human_cost=excluded.human_cost, human_timeline=excluded.human_timeline, status='pending', created_at=now()`,
+      [projectId, displayName, cost||'', hours||'', api_fees||'', human_cost||'', human_timeline||'']);
+    // Post a formatted message to the project thread
+    const grid = `PROPOSAL\n\nName: ${displayName}\nCost: ${cost||'-'}\nHours: ${hours||'-'}\nEst. API Fees: ${api_fees||'-'}\nHuman Cost: ${human_cost||'-'}\nHuman Timeline: ${human_timeline||'-'}\n\nPlease review and click Accept to proceed.`;
+    await pool.query('insert into project_messages(project_id, user_id, content) values($1,$2,$3)', [projectId, req.user.id, grid]);
+    // Move project to Waiting Client Feedback
+    await pool.query('update projects set status=$2 where id=$1', [projectId, 'Waiting Client Feedback']);
+    res.json({ ok:true });
+  } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
+});
+
+// Client fetch proposal
+app.get('/client/projects/:projectId/proposal', auth('client'), async (req,res)=>{
+  try {
+    const projectId = Number(req.params.projectId);
+    if (!(await ensureClientOwns(projectId, req.user.id))) return res.status(403).json({ ok:false, error:'Access denied' });
+    const r = await pool.query('select * from project_proposals where project_id=$1', [projectId]);
+    res.json({ ok:true, proposal: r.rows[0] || null });
+  } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
+});
+
+// Client accepts proposal -> project to In production
+app.post('/client/projects/:projectId/proposal/accept', auth('client'), async (req,res)=>{
+  try {
+    const projectId = Number(req.params.projectId);
+    if (!(await ensureClientOwns(projectId, req.user.id))) return res.status(403).json({ ok:false, error:'Access denied' });
+    const r = await pool.query('update project_proposals set status=\'accepted\', accepted_at=now() where project_id=$1 returning *', [projectId]);
+    if (r.rowCount===0) return res.status(404).json({ ok:false, error:'No proposal found' });
+    await pool.query("update projects set status='In production', project_stage='Discovery' where id=$1", [projectId]);
+    // Message thread note
+    await pool.query('insert into project_messages(project_id, user_id, content) values($1,null,$2)', [projectId, 'Client accepted the proposal. Project moved to In production and Discovery phase.']);
+    // Optionally notify via email_outbox if sequences are configured (not sending here by default)
+    res.json({ ok:true });
+  } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
+});
+
+// Client endpoints
+app.get('/client/projects', auth('client'), async (req, res) => {
+  try {
+    const r = await pool.query('select id, name, status, eta from projects where client_id=$1 order by id asc', [req.user.id]);
+    res.json({ ok: true, projects: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get assigned advisor for client
+app.get('/client/advisor', auth('client'), async (req, res) => {
+  try {
+    const r = await pool.query(
+      'select u.id, u.name, u.email, u.phone from advisor_clients ac join users u on ac.advisor_id = u.id where ac.client_id = $1',
+      [req.user.id]
+    );
+    res.json({ ok: true, advisor: r.rowCount > 0 ? r.rows[0] : null });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Create schedule request
+app.post('/client/schedule-request', auth('client'), async (req, res) => {
+  try {
+    const { time_slot, meeting_description } = req.body;
+    
+    if (!time_slot) {
+      return res.status(400).json({ ok: false, error: 'Time slot is required' });
+    }
+    
+    // Get assigned advisor
+    const advisorResult = await pool.query(
+      'select advisor_id from advisor_clients where client_id = $1',
+      [req.user.id]
+    );
+    
+    if (advisorResult.rowCount === 0) {
+      return res.status(400).json({ ok: false, error: 'No advisor assigned to your account' });
+    }
+    
+    const advisorId = advisorResult.rows[0].advisor_id;
+    
+    // Create schedule request
+    await pool.query(
+      'insert into schedule_requests(client_id, advisor_id, time_slot, meeting_description) values($1,$2,$3,$4)',
+      [req.user.id, advisorId, time_slot, meeting_description || '']
+    );
+    
+    res.json({ ok: true, message: 'Your client advisor will confirm and send a calendar invite.' });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Admin: CRUD for webinars and signups view
+app.get('/admin/webinars', auth('admin'), async (req, res) => {
+  try {
+    const r = await pool.query('select * from webinars order by datetime asc');
+    res.json({ ok: true, webinars: r.rows });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.post('/admin/webinars', auth('admin'), uploadWebinar.single('image'), async (req, res) => {
+  try {
+    const { title, description, datetime, duration } = req.body || {};
+    if (!title || !datetime) return res.status(400).json({ ok:false, error:'title and datetime are required' });
+    let image_url = (req.body && req.body.image_url) || '';
+    if (req.file) {
+      const rel = path.relative(__dirname, req.file.path).replace(/\\/g,'/');
+      image_url = `/uploads/${rel.split('/').slice(-2).join('/')}`; // uploads/<project>/<filename>
+    }
+    const r = await pool.query(
+      'insert into webinars(title, description, datetime, duration, image_url) values($1,$2,$3,$4,$5) returning *',
+      [title, description || '', datetime, duration || '', image_url || '']
+    );
+    res.json({ ok:true, webinar: r.rows[0] });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.put('/admin/webinars/:id', auth('admin'), uploadWebinar.single('image'), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { title, description, datetime, duration } = req.body || {};
+    let image_url = (req.body && req.body.image_url) || undefined;
+    if (req.file) {
+      const rel = path.relative(__dirname, req.file.path).replace(/\\/g,'/');
+      image_url = `/uploads/${rel.split('/').slice(-2).join('/')}`;
+    }
+    const r = await pool.query(
+      `update webinars set 
+         title = coalesce($2,title),
+         description = coalesce($3,description),
+         datetime = coalesce($4,datetime),
+         duration = coalesce($5,duration),
+         image_url = coalesce($6,image_url)
+       where id=$1 returning *`,
+      [id, title, description, datetime, duration, image_url]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ ok:false, error:'Not found' });
+    res.json({ ok:true, webinar: r.rows[0] });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.delete('/admin/webinars/:id', auth('admin'), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    await pool.query('delete from webinars where id=$1', [id]);
+    res.json({ ok:true });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.get('/admin/webinars/:id/signups', auth('admin'), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const r = await pool.query(
+      `select ws.id, ws.created_at, u.id as client_id, u.name, u.email
+       from webinar_signups ws join users u on ws.client_id = u.id
+       where ws.webinar_id = $1 order by ws.created_at desc`,
+      [id]
+    );
+    res.json({ ok:true, signups: r.rows });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Client: list webinars and signup
+app.get('/client/webinars', auth('client'), async (req, res) => {
+  try {
+    const r = await pool.query('select * from webinars order by datetime asc');
+    res.json({ ok:true, webinars: r.rows });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Admin: Email templates CRUD
+app.get('/admin/email/templates', auth('admin'), async (_req, res) => {
+  try {
+    const r = await pool.query('select * from email_templates order by id asc');
+    res.json({ ok:true, templates: r.rows });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.post('/admin/email/templates', auth('admin'), async (req, res) => {
+  try {
+    const { name, key, subject, body, is_system } = req.body || {};
+    if (!name || !subject || !body) return res.status(400).json({ ok:false, error:'name, subject, body required' });
+    const r = await pool.query('insert into email_templates(name, key, subject, body, is_system) values($1,$2,$3,$4,$5) returning *', [name, key || null, subject, body, !!is_system]);
+    res.json({ ok:true, template: r.rows[0] });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.put('/admin/email/templates/:id', auth('admin'), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { name, key, subject, body, is_system } = req.body || {};
+    const r = await pool.query(
+      `update email_templates set 
+        name=coalesce($2,name), key=coalesce($3,key), subject=coalesce($4,subject), body=coalesce($5,body), is_system=coalesce($6,is_system), updated_at=now()
+       where id=$1 returning *`,
+      [id, name, key, subject, body, is_system]
+    );
+    if (r.rowCount===0) return res.status(404).json({ ok:false, error:'Not found' });
+    res.json({ ok:true, template: r.rows[0] });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.delete('/admin/email/templates/:id', auth('admin'), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    await pool.query('delete from email_templates where id=$1 and is_system=false', [id]);
+    res.json({ ok:true });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Admin: Sequences CRUD
+app.get('/admin/email/sequences', auth('admin'), async (_req, res) => {
+  try {
+    const seq = await pool.query('select * from email_sequences order by id asc');
+    const steps = await pool.query('select * from email_sequence_steps order by sequence_id asc, step_order asc');
+    res.json({ ok:true, sequences: seq.rows, steps: steps.rows });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.post('/admin/email/sequences', auth('admin'), async (req, res) => {
+  try {
+    const { name, description, trigger, is_active } = req.body || {};
+    if (!name) return res.status(400).json({ ok:false, error:'name required' });
+    const r = await pool.query('insert into email_sequences(name, description, trigger, is_active) values($1,$2,$3,$4) returning *', [name, description||'', trigger||'manual', is_active!==false]);
+    res.json({ ok:true, sequence: r.rows[0] });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.put('/admin/email/sequences/:id', auth('admin'), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { name, description, trigger, is_active } = req.body || {};
+    const r = await pool.query('update email_sequences set name=coalesce($2,name), description=coalesce($3,description), trigger=coalesce($4,trigger), is_active=coalesce($5,is_active) where id=$1 returning *', [id, name, description, trigger, is_active]);
+    if (r.rowCount===0) return res.status(404).json({ ok:false, error:'Not found' });
+    res.json({ ok:true, sequence: r.rows[0] });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.delete('/admin/email/sequences/:id', auth('admin'), async (req, res) => {
+  try { await pool.query('delete from email_sequences where id=$1', [Number(req.params.id)]); res.json({ ok:true }); }
+  catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Steps CRUD
+app.post('/admin/email/sequences/:id/steps', auth('admin'), async (req,res)=>{
+  try {
+    const id = Number(req.params.id);
+    const { step_order, delay_minutes, template_id, notes } = req.body || {};
+    const r = await pool.query('insert into email_sequence_steps(sequence_id, step_order, delay_minutes, template_id, notes) values($1,$2,$3,$4,$5) returning *', [id, step_order||1, delay_minutes||0, template_id||null, notes||'']);
+    res.json({ ok:true, step: r.rows[0] });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.put('/admin/email/sequences/:id/steps/:stepId', auth('admin'), async (req,res)=>{
+  try {
+    const id = Number(req.params.id);
+    const stepId = Number(req.params.stepId);
+    const { step_order, delay_minutes, template_id, notes } = req.body || {};
+    const r = await pool.query('update email_sequence_steps set step_order=coalesce($3,step_order), delay_minutes=coalesce($4,delay_minutes), template_id=coalesce($5,template_id), notes=coalesce($6,notes) where id=$2 and sequence_id=$1 returning *', [id, stepId, step_order, delay_minutes, template_id, notes]);
+    if (r.rowCount===0) return res.status(404).json({ ok:false, error:'Not found' });
+    res.json({ ok:true, step: r.rows[0] });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.delete('/admin/email/sequences/:id/steps/:stepId', auth('admin'), async (req,res)=>{
+  try { await pool.query('delete from email_sequence_steps where id=$1 and sequence_id=$2', [Number(req.params.stepId), Number(req.params.id)]); res.json({ ok:true }); }
+  catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Admin: Outbox queue (list only for now)
+app.get('/admin/email/outbox', auth('admin'), async (_req,res)=>{
+  try { const r = await pool.query('select * from email_outbox order by created_at desc'); res.json({ ok:true, outbox: r.rows }); }
+  catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Admin: Dispatch outbox now (manual trigger)
+app.post('/admin/email/dispatch-now', auth('admin'), async (_req,res)=>{
+  try {
+    if (!dispatchOutbox) return res.status(500).json({ ok:false, error:'Sender not available on this instance' });
+    await dispatchOutbox();
+    res.json({ ok:true });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Admin: Send ad hoc email (queues in outbox)
+app.post('/admin/email/send', auth('admin'), async (req,res)=>{
+  try {
+    const { to_user_id, to_email, subject, body, template_id, metadata, scheduled_for } = req.body || {};
+    if (!subject || !body || (!to_user_id && !to_email)) return res.status(400).json({ ok:false, error:'Missing recipient or subject/body' });
+    const r = await pool.query('insert into email_outbox(to_user_id, to_email, subject, body, template_id, metadata, scheduled_for) values($1,$2,$3,$4,$5,$6,$7) returning *', [to_user_id||null, to_email||null, subject, body, template_id||null, metadata||{}, scheduled_for||null]);
+    if (dispatchOutbox) {
+      dispatchOutbox().catch(()=>{});
+    }
+    res.json({ ok:true, email: r.rows[0] });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Broadcast email to all users by role; supports attachments via metadata.attachments
+app.post('/admin/email/send-broadcast', auth('admin'), async (req,res)=>{
+  try {
+    const { role, subject, body, attachments } = req.body || {};
+    if (!role || !subject || !body) return res.status(400).json({ ok:false, error:'role, subject and body required' });
+    const users = await pool.query('select id, email from users where role=$1', [role]);
+    for (const u of users.rows) {
+      await pool.query('insert into email_outbox(to_user_id, to_email, subject, body, template_id, metadata) values($1,$2,$3,$4,$5,$6)', [u.id, u.email, subject, body, null, { attachments: attachments || [] }]);
+    }
+    // Optionally trigger immediate dispatch if worker is available
+    if (dispatchOutbox) {
+      dispatchOutbox().catch(()=>{});
+    }
+    res.json({ ok:true, count: users.rowCount });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Admin: Settings upsert (placeholder, values stored but not used yet)
+app.get('/admin/email/settings', auth('admin'), async (_req,res)=>{
+  try { const r = await pool.query('select * from email_settings order by id desc limit 1'); res.json({ ok:true, settings: r.rows[0] || null }); }
+  catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.post('/admin/email/settings', auth('admin'), async (req,res)=>{
+  try {
+    const { provider, smtp_host, smtp_port, smtp_username, smtp_password, smtp_secure, from_name, from_email } = req.body || {};
+    const r = await pool.query('insert into email_settings(provider, smtp_host, smtp_port, smtp_username, smtp_password, smtp_secure, from_name, from_email) values($1,$2,$3,$4,$5,$6,$7,$8) returning *', [provider||'smtp', smtp_host||null, smtp_port||null, smtp_username||null, smtp_password||null, !!smtp_secure, from_name||null, from_email||null]);
+    res.json({ ok:true, settings: r.rows[0] });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+app.post('/client/webinars/:id/signup', auth('client'), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    await pool.query('insert into webinar_signups(webinar_id, client_id) values($1,$2) on conflict (webinar_id, client_id) do nothing', [id, req.user.id]);
+    res.json({ ok:true });
+  } catch (e) { res.status(500).json({ ok:false, error: e.message }); }
+});
+
+// Request password reset (stores in outbox for now; email sending to be wired to SMTP later)
+app.post('/public/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ ok:false, error:'Email required' });
+    const u = await pool.query('select id, name from users where email=$1', [email]);
+    if (u.rowCount === 0) return res.json({ ok:true }); // do not leak
+    const to_user_id = u.rows[0].id;
+    const token = Math.random().toString(36).slice(2);
+    // Store token with 1 hour expiry
+    await pool.query('insert into password_reset_tokens(token, user_id, expires_at) values($1,$2, now() + interval \'1 hour\')', [token, to_user_id]);
+    // Enqueue password reset email using template key 'password_reset'
+    const tpl = await pool.query("select id, subject, body from email_templates where key='password_reset' limit 1");
+    const template = tpl.rowCount > 0 ? tpl.rows[0] : null;
+    const subject = template ? template.subject : 'Reset your Hyah! AI password';
+    const body = template ? template.body : 'Hi {{name}},\\n\\nUse the link below to reset your password.\\n{{reset_url}}\\n\\nIf you did not request this, you can ignore this email.';
+    const baseUrl = req.headers.origin || '';
+    const resetUrl = baseUrl ? `${baseUrl}/reset?token=${token}` : `https://x-sourcing-front.onrender.com/reset?token=${token}`;
+    await pool.query('insert into email_outbox(to_user_id, to_email, subject, body, template_id, metadata) values($1,$2,$3,$4,$5,$6)', [to_user_id, email, subject, body, template ? template.id : null, { type:'password_reset', token, name: u.rows[0].name || '', reset_url: resetUrl }]);
+    if (dispatchOutbox) {
+      dispatchOutbox().catch(()=>{});
+    }
+    res.json({ ok:true });
+  } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
+});
+
+// Profile self endpoints
+app.get('/me', auth(), async (req, res) => {
+  try {
+    const r = await pool.query('select id, role, name, email, username, company_name, website_url, phone, company_description, initial_password_changed from users where id=$1', [req.user.id]);
+    res.json({ ok: true, user: r.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Change password endpoint
+app.post('/change-password', auth(), async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body;
+    
+    if (!current_password || !new_password) {
+      return res.status(400).json({ ok: false, error: 'Current and new password required' });
+    }
+
+    if (new_password.length < 6) {
+      return res.status(400).json({ ok: false, error: 'New password must be at least 6 characters' });
+    }
+
+    // Get user's current password
+    const userResult = await pool.query('SELECT password FROM users WHERE id=$1', [req.user.id]);
+    if (userResult.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'User not found' });
+    }
+
+    const storedPassword = userResult.rows[0].password;
+    
+    // Check if stored password is hashed (starts with $2b$) or plain text
+    let passwordMatches = false;
+    if (storedPassword.startsWith('$2b$')) {
+      // Hashed password - use bcrypt compare
+      passwordMatches = await bcrypt.compare(current_password, storedPassword);
+    } else {
+      // Plain text password - direct comparison
+      passwordMatches = current_password === storedPassword;
+    }
+
+    if (!passwordMatches) {
+      return res.status(401).json({ ok: false, error: 'Current password is incorrect' });
+    }
+
+    // Hash new password
+    const hashed = await bcrypt.hash(new_password, 10);
+    
+    // Update password and set initial_password_changed flag
+    await pool.query(
+      'UPDATE users SET password=$1, initial_password_changed=true WHERE id=$2',
+      [hashed, req.user.id]
+    );
+
+    res.json({ ok: true, message: 'Password changed successfully' });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.put('/me', auth(), async (req, res) => {
+  try {
+    const { name, email, username, companyName, websiteUrl, phone, password, companyDescription } = req.body || {};
+    
+    // Check if username is already taken by another user
+    if (username && username !== req.user.username) {
+      const existing = await pool.query('select id from users where username=$1 and id!=$2', [username, req.user.id]);
+      if (existing.rowCount > 0) {
+        return res.status(400).json({ ok: false, error: 'Username already taken' });
+      }
+    }
+    
+    if (password) {
+      // Update with new password (hash it first)
+      const hashed = await bcrypt.hash(password, 10);
+      await pool.query('update users set name=coalesce($1,name), email=coalesce($2,email), username=coalesce($3,username), password=$4, company_name=coalesce($5,company_name), website_url=coalesce($6,website_url), phone=coalesce($7,phone), company_description=coalesce($8,company_description) where id=$9', [name, email, username, hashed, companyName, websiteUrl, phone, companyDescription, req.user.id]);
+    } else {
+      // Update without changing password
+      await pool.query('update users set name=coalesce($1,name), email=coalesce($2,email), username=coalesce($3,username), company_name=coalesce($4,company_name), website_url=coalesce($5,website_url), phone=coalesce($6,phone), company_description=coalesce($7,company_description) where id=$8', [name, email, username, companyName, websiteUrl, phone, companyDescription, req.user.id]);
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Public ideator system prompt for landing page
+const PUBLIC_IDEATOR_SYSTEM_PROMPT = `You are Hyah! AI's friendly AI consultant helping potential clients discover how we can transform their business operations. Your personality is warm, enthusiastic, and focused on showing value.
+
+OPENING CONTEXT:
+The user can start by:
+1. Telling you about their company type
+2. Describing a specific task or challenge
+3. Providing their website URL for analysis
+4. Just asking what you can do
+
+YOUR MISSION:
+- Show them how Hyah! AI can help them save 80-90% on costs while delivering faster
+- Demonstrate our capabilities through relevant examples
+- Guide them toward creating a free account to explore further
+- Be conversational and avoid overwhelming technical details
+
+CONVERSATION FLOW:
+1. Understand their business/needs (1-2 messages)
+2. Suggest 2-3 specific AI-powered solutions that would help them
+3. Share a relevant success story or cost comparison
+4. If they show interest, naturally guide toward signup
+
+KEY TALKING POINTS:
+- We handle everything from marketing automation to data analysis
+- Dedicated advisor + AI team = senior-level work at 90% less cost
+- Projects that take months traditionally get done in days
+- Examples: automated reporting, content creation, data enrichment, workflow automation, customer service, lead generation
+
+IMPORTANT RULES:
+- Keep responses concise (2-3 paragraphs max)
+- Use bullet points for clarity
+- Always relate back to their specific situation
+- Don't be pushy about signup - let interest develop naturally
+- If they provide a URL, analyze it and suggest specific improvements
+
+WHEN TO SUGGEST SIGNUP:
+- After 3-4 exchanges
+- When they express strong interest ("love it", "perfect", "how do we start")
+- When they ask about pricing or next steps
+
+SIGNUP PROMPT:
+"I can see exactly how Hyah! AI could help [their specific situation]. To create a personalized project scope and show you the full platform, let's set up your free account. It takes just 30 seconds - what email should I use?"
+
+Remember: You're showcasing value, not selling. Be helpful, specific, and enthusiastic about their potential.`;
+
+// Original ideator system prompt with comprehensive instructions
+const IDEATOR_SYSTEM_PROMPT = `You are an expert AI Agent Architect helping users design custom AI agents. Your role is to:
+
+1. Guide users through a THOROUGH conversational process to understand their needs
+2. Ask multiple rounds of clarifying questions to gather COMPREHENSIVE requirements
+3. Suggest modern AI technologies and best practices
+4. Generate detailed agent specifications with cost estimates
+
+You should be friendly, professional, and VERY thorough. Think like a senior consultant conducting a discovery session. Always explore:
+
+INITIAL DISCOVERY (Round 1):
+- Core problem and pain points
+- Target users and stakeholders
+- Desired outcomes and success metrics
+- Current workflow (if any)
+- Platform requirements: Do they have an existing platform/app to integrate with, or do we need to build a complete frontend?
+
+DEEP DIVE (Round 2):
+- Specific features and capabilities needed
+- Data sources and formats
+- Integration requirements (APIs, databases, tools)
+- Performance expectations
+- Security and compliance needs
+
+TECHNICAL REQUIREMENTS (Round 3):
+- Expected volume/scale of operations
+- Response time requirements
+- Error handling preferences
+- Monitoring and reporting needs
+- User interface requirements (if frontend needed)
+
+BUSINESS CONTEXT (Round 4):
+- Team technical capabilities
+- Change management considerations
+- Future scalability needs
+
+IMPORTANT GUIDELINES:
+- When users say things like "You decide", "I'm not sure", "What do you recommend?", or "You choose what's best", take charge and make expert recommendations based on best practices
+- Always explain your recommendations briefly so they understand the reasoning
+- Make it clear that specifications can be edited later as requirements become clearer
+- Balance thoroughness with user comfort - if they seem overwhelmed, reassure them that you can make expert choices
+
+DEFAULT BUILD BASELINE (apply unless the user explicitly overrides):
+- UI/Frontend: Next.js (App Router) + TypeScript + Tailwind CSS. Provide extensive detail on pages, components, routes, state, accessibility, responsiveness, and key UI interactions.
+- Model Tier: Use a best-in-class LLM per task. Default to OpenAI GPT-4o, Anthropic Claude Opus, or Google Gemini 2.5 Pro depending on fit; state which and why. If the user has a constraint, honor it.
+- Vector Store: Pinecone for embeddings/vector search when retrieval is appropriate. Specify index names, namespaces, dimension, filters, and upsert/query patterns.
+- Database: PostgreSQL for transactional data. Provide a complete schema with tables, keys, indices, constraints, and representative queries. Include migration notes and data lifecycle.
+- Non-negotiable: All user instructions take precedence. If the user adds extra requirements mid-conversation, incorporate them into the final spec even if not previously prompted.
+
+DELIVERABLE SPEC CONTENTS:
+- Summary: Comprehensive 4-6 sentence executive overview covering problem, solution, users, benefits, and ROI
+- Detailed UI spec (Next.js + Tailwind structure, components, routes) with extensive component descriptions
+- Step-by-step workflow: 6-8 detailed implementation steps, each with 3-4 sentences explaining technical details, data flows, integrations, and outcomes
+- API design (endpoints, auth, request/response, errors) with complete endpoint documentation
+- Data model (DDL for PostgreSQL, indices) with full schema and relationships
+- Vector/RAG plan (if applicable: chunking, indexing, reranking, evaluation) with specific configuration
+- Model selection rationale (GPT-4o / Claude Opus / Gemini 2.5 Pro) with detailed reasoning
+- Security (authN/Z, PII, secrets) with comprehensive threat modeling
+- Observability (logs/metrics/traces, dashboards) with specific monitoring strategies
+- Deployment (Render), environment variables, scaling, rollback with complete DevOps plan
+- Test strategy (unit/integration/e2e) with test scenarios
+- Runbook (operations, incident response) with procedures
+
+CRITICAL: Be extremely thorough and detailed in ALL sections. Each step should be 3-4 sentences minimum. The summary should be comprehensive and compelling. Every technical decision should be explained.
+
+Remember to:
+- Ask 2-3 focused questions at a time
+- When users defer to your expertise, confidently recommend the best solution
+- Provide examples to clarify when helpful
+- Validate understanding before moving forward
+- Be encouraging and reassuring, especially for non-technical users
+- Let users know they can always edit the specification later`;
+
+// Helper function to check if ready for specification
+async function checkIfReadyForSpec(genAI, conversation_history, selectedModel = 'claude') {
+  const checkPrompt = `Based on the conversation so far, do we have COMPREHENSIVE information to create a detailed agent specification?
+  
+  We need ALL of the following:
+  1. Clear understanding of the problem and desired outcomes
+  2. Detailed functionality requirements and user workflows
+  3. Technical requirements (integrations, data sources, performance)
+  4. Business context (timeline, budget considerations, team capabilities)
+  5. At least 3-4 rounds of Q&A have occurred (minimum 3 user-model exchanges)
+  6. User has provided specific, detailed answers (not just high-level)
+  
+  Only respond 'YES' if we have thorough, detailed information in ALL areas. Otherwise respond 'NO' so we will ask more questions.
+  Respond with only 'YES' or 'NO'.`;
+  
+  try {
+    // Add timeout protection (10 seconds max)
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Readiness check timeout')), 10000)
+    );
+    
+    const checkPromise = (async () => {
+      let response;
+      
+      if (selectedModel === 'claude') {
+        // Use Claude
+        const messages = [];
+        for (const m of conversation_history) {
+          if (!m || !m.role || !m.content) continue;
+          messages.push({ role: m.role, content: String(m.content) });
+        }
+        messages.push({ role: 'user', content: checkPrompt });
+        
+        const result = await generateClaudeContent('', messages, 0.3, 1024);
+        response = result.response.text();
+      } else {
+        // Use Gemini
+        const baseModelOptions = {
+          model: process.env.GEMINI_MODEL || 'gemini-1.5-pro',
+          temperature: 0.3
+        };
+        
+        const contents = [];
+        for (const m of conversation_history) {
+          if (!m || !m.role || !m.content) continue;
+          const role = m.role === 'assistant' ? 'model' : 'user';
+          contents.push({ role, parts: [{ text: String(m.content) }] });
+        }
+        contents.push({ role: 'user', parts: [{ text: checkPrompt }] });
+        
+        const result = await generateWithFallback(genAI, baseModelOptions, { contents });
+        response = result.response.text();
+      }
+      
+      return response.trim().toUpperCase() === 'YES';
+    })();
+    
+    return await Promise.race([checkPromise, timeoutPromise]);
+  } catch (e) {
+    console.error('Error checking if ready for spec:', e);
+    // On error or timeout, return false to continue asking questions
+    return false;
+  }
+}
+
+// Agent Ideator chat with Gemini or Claude streaming (SSE)
+app.post('/agent-ideator/chat', auth(), async (req, res) => {
+  try {
+    const { message, conversation_history = [], selectedModel = 'claude' } = req.body || {};
+    const maxDetail = (req.query && (String(req.query.maxDetail||'')==='1'));
+    
+    // Validate model selection
+    const useGemini = selectedModel === 'gemini';
+    const useClaude = selectedModel === 'claude';
+    
+    if (!useGemini && !useClaude) {
+      return res.status(400).json({ ok: false, error: 'Invalid model selection. Choose "gemini" or "claude".' });
+    }
+    
+    // Check API keys
+    if (useGemini) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return res.status(500).json({ ok: false, error: 'Missing GEMINI_API_KEY' });
+    }
+    if (useClaude) {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) return res.status(500).json({ ok: false, error: 'Missing ANTHROPIC_API_KEY' });
+    }
+
+    const genAI = useGemini ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY, { apiVersion: 'v1' }) : null;
+    
+    // Fetch user's company context for personalization
+    let companyContext = '';
+    try {
+      const userProfile = await pool.query(
+        'SELECT company_name, company_description, website_url FROM users WHERE id = $1',
+        [req.user.id]
+      );
+      
+      const userSystems = await pool.query(
+        'SELECT name, description FROM user_systems WHERE user_id = $1 ORDER BY name',
+        [req.user.id]
+      );
+      
+      if (userProfile.rowCount > 0) {
+        const profile = userProfile.rows[0];
+        if (profile.company_name || profile.company_description) {
+          companyContext = '\n\nCOMPANY CONTEXT (use this to personalize recommendations):\n';
+          if (profile.company_name) companyContext += `Company: ${profile.company_name}\n`;
+          if (profile.company_description) companyContext += `About: ${profile.company_description}\n`;
+          if (profile.website_url) companyContext += `Website: ${profile.website_url}\n`;
+        }
+      }
+      
+      if (userSystems.rowCount > 0) {
+        companyContext += '\nExisting Systems/Software:\n';
+        userSystems.rows.forEach(sys => {
+          companyContext += `- ${sys.name}`;
+          if (sys.description) companyContext += `: ${sys.description}`;
+          companyContext += '\n';
+        });
+        companyContext += '\nWhen recommending integrations or technologies, consider these existing systems for better alignment.\n';
+      }
+    } catch (e) {
+      console.error('Error fetching company context:', e);
+      // Non-fatal - continue without context
+    }
+    
+    // First message - return welcome message
+    if (!message && conversation_history.length === 0) {
+      const welcomeMessage = `Hey there! 👋 I'm here to help you ideate and create a scope for a new AI agent. 
+
+I'll guide you through the process, and by the end, we'll have a comprehensive specification including the technical stack, workflow, and requirements.
+
+To get started, please tell me about the agent you have in mind. You can share:
+- What problem it should solve
+- Who will use it
+- Any specific functionality you need
+- Whether you have an existing platform/app to integrate with
+
+Don't worry about being too technical - just explain it in your own words, and I'll ask clarifying questions as needed. 
+
+If you're unsure about any technical details, just let me know and I'll recommend the best approach based on industry best practices. You can always edit the specification later as your requirements become clearer.`;
+      
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      
+      // Stream the welcome message word by word
+      const words = welcomeMessage.split(' ');
+      for (const word of words) {
+        res.write(`data: ${JSON.stringify({ content: word + ' ' })}\n\n`);
+        // Small delay to simulate streaming
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      return res.end();
+    }
+
+    // Check if we should generate specification
+    const textMessage = String(message || '');
+    const isDoneCommand = /\/(done|complete|finalize)\/?/i.test(textMessage);
+    
+    // Only check if ready for spec after at least 3 user messages (avoid unnecessary API calls)
+    const userMessageCount = conversation_history.filter(m => m.role === 'user').length + 1;
+    const shouldCheckReadiness = userMessageCount >= 3;
+    
+    const shouldGenerateSpec = isDoneCommand || (shouldCheckReadiness && await checkIfReadyForSpec(genAI, [...conversation_history, { role: 'user', content: textMessage }], selectedModel));
+    
+    if (shouldGenerateSpec) {
+      // Generate complete specification
+      const specModelBase = {
+        model: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
+        temperature: 0.3
+      };
+      
+      const specContents = [];
+      for (const m of conversation_history) {
+        if (!m || !m.role || !m.content) continue;
+        const role = m.role === 'assistant' ? 'model' : 'user';
+        specContents.push({ role, parts: [{ text: String(m.content) }] });
+      }
+      specContents.push({ role: 'user', parts: [{ text: String(message) }] });
+      
+      // If user used /done/, add a note to work with incomplete information
+      const specPrompt = `Based on our conversation, generate a comprehensive agent specification in JSON format${isDoneCommand ? '. The user has requested immediate specification generation, so make intelligent assumptions based on best practices and industry standards for any missing information' : ''}. ${maxDetail ? 'Maximize detail in every section with multi-level headings, examples, tables, and diagrams.' : 'Be thorough but concise.'} Use tables where helpful.
+
+${companyContext ? companyContext + '\nIMPORTANT: Use this company context to personalize the specification. Recommend integrations with their existing systems, align with their business model, and reference their company in examples.\n' : ''}
+
+Generate the specification with these sections:
+
+{
+    "title": "Descriptive agent name",
+    "agent_type": "one of: customer_service, data_analysis, content_creation, process_automation, or other",
+    "summary": "A comprehensive 4-6 sentence executive summary that covers: the core problem being solved, the target users and their pain points, the key capabilities and benefits of the solution, the expected business impact and ROI, and why this approach is superior to alternatives. Be specific and compelling.",
+    "steps": [
+        "Step Title: Detailed 3-4 sentence description explaining exactly what happens in this step, what technologies are used, what data flows through the system, what user interactions occur, what business logic is executed, and what the expected outcomes are. Include specific technical implementation details, API endpoints, database operations, and error handling considerations.",
+        "Next Step Title: Another detailed 3-4 sentence explanation with the same level of thoroughness, covering all technical aspects, user workflows, data transformations, integration points, and success criteria for this phase.",
+        ... (minimum 6-8 comprehensive steps)
+    ],
+    "build_phases": [
+        {
+            "phase": "Scope",
+            "description": "Initial project scoping and requirements gathering",
+            "tasks": [
+                "Define project goals and objectives",
+                "Identify key stakeholders and their requirements",
+                "Document technical constraints and dependencies",
+                "Establish success criteria and KPIs"
+            ],
+            "deliverables": [
+                "Project scope document",
+                "Requirements specification",
+                "Initial timeline and budget estimate"
+            ],
+            "duration": "1-2 weeks"
+        },
+        {
+            "phase": "Discovery",
+            "description": "Deep dive into technical architecture and design planning",
+            "tasks": [
+                "Design system architecture and data flows",
+                "Select optimal tech stack and LLM models",
+                "Plan integration points and APIs",
+                "Create detailed technical specifications",
+                "Set up development environment and infrastructure"
+            ],
+            "deliverables": [
+                "Technical architecture document",
+                "System design diagrams",
+                "Infrastructure setup",
+                "Development environment configuration"
+            ],
+            "duration": "1-2 weeks"
+        },
+        {
+            "phase": "UX/UI",
+            "description": "User experience design and interface development",
+            "tasks": [
+                "Create user journey maps and workflows",
+                "Design wireframes and mockups",
+                "Develop interactive prototypes",
+                "Conduct user testing and gather feedback",
+                "Finalize UI components and design system"
+            ],
+            "deliverables": [
+                "UX wireframes and user flows",
+                "High-fidelity UI mockups",
+                "Interactive prototype",
+                "Design system documentation"
+            ],
+            "duration": "2-3 weeks"
+        },
+        {
+            "phase": "Development",
+            "description": "Core development and implementation of features",
+            "tasks": [
+                "Implement backend services and APIs",
+                "Integrate LLM and AI components",
+                "Build frontend interfaces",
+                "Set up data pipelines and storage",
+                "Implement security and authentication",
+                "Integrate third-party services and APIs"
+            ],
+            "deliverables": [
+                "Functional backend system",
+                "Integrated AI/LLM components",
+                "Complete frontend application",
+                "API documentation",
+                "Security implementation"
+            ],
+            "duration": "4-6 weeks"
+        },
+        {
+            "phase": "Q/C",
+            "description": "Quality assurance and comprehensive testing",
+            "tasks": [
+                "Perform unit and integration testing",
+                "Conduct end-to-end testing scenarios",
+                "Test LLM performance and accuracy",
+                "Security and vulnerability testing",
+                "Performance and load testing",
+                "User acceptance testing (UAT)",
+                "Bug fixes and optimization"
+            ],
+            "deliverables": [
+                "Test reports and coverage metrics",
+                "Bug tracking and resolution log",
+                "Performance benchmarks",
+                "Security audit report",
+                "UAT sign-off"
+            ],
+            "duration": "2-3 weeks"
+        },
+        {
+            "phase": "Launch",
+            "description": "Production deployment and go-live preparation",
+            "tasks": [
+                "Prepare production environment",
+                "Deploy to production infrastructure",
+                "Configure monitoring and alerting",
+                "Set up logging and analytics",
+                "Conduct final smoke tests",
+                "Train users and prepare documentation",
+                "Execute launch plan and communications"
+            ],
+            "deliverables": [
+                "Production deployment",
+                "Monitoring dashboards",
+                "User documentation and training materials",
+                "Launch announcement and communications",
+                "Post-launch support plan"
+            ],
+            "duration": "1-2 weeks"
+        }
+    ],
+    "agent_stack": {
+        "llm_model": {
+            "primary_model": {
+                "recommendation": "Best primary model based on use case (e.g., Claude 3 Opus for complex reasoning, GPT-4 for general tasks, Gemini 1.5 Pro for long context, Mistral for efficiency)",
+                "provider": "Provider name (Anthropic, OpenAI, Google, etc.)",
+                "strengths": ["List of specific strengths for this use case"],
+                "reasoning": "Detailed explanation of why this model excels for these requirements"
+            },
+            "specialized_models": {
+                "vision": {
+                    "model": "Best vision model if images are involved (e.g., GPT-4V, Claude 3 Vision, Gemini Pro Vision)",
+                    "use_cases": "When to use this model"
+                },
+                "code_generation": {
+                    "model": "Best for code tasks (e.g., Claude 3 for complex code, GPT-4 for general coding, Codex/Copilot for IDE integration)",
+                    "use_cases": "When to use this model"
+                },
+                "data_analysis": {
+                    "model": "Best for data/math (e.g., Code Interpreter GPT-4, Claude 3 with tools, Gemini with Code Execution)",
+                    "use_cases": "When to use this model"
+                },
+                "fast_inference": {
+                    "model": "Fast, cost-effective model (e.g., Claude 3 Haiku, GPT-3.5-turbo, Mistral 7B)",
+                    "use_cases": "For high-volume, simple tasks"
+                }
+            },
+            "router_configuration": {
+                "enabled": "true/false - whether to use LLM routing",
+                "routing_strategy": "How to decide which model to use (e.g., task-based, complexity-based, cost-optimized)",
+                "router_logic": "Specific routing rules or ML-based router recommendation",
+                "fallback_model": "Model to use if router fails"
+            },
+            "cost_optimization": {
+                "strategy": "How to balance performance vs cost",
+                "estimated_monthly_cost": "Rough estimate based on expected usage"
+            }
+        },
+        "vector_database": {
+            "recommendation": "ALWAYS include (e.g., Pinecone for production, Weaviate for hybrid search, Qdrant for on-premise, ChromaDB for development)",
+            "purpose": "Store embeddings for long-term memory, training data, and retrieval",
+            "reasoning": "Why this specific vector DB is recommended",
+            "configuration": {
+                "index_type": "Type of index (e.g., HNSW, IVF)",
+                "dimensions": "Based on embedding model",
+                "metric": "Distance metric (cosine, euclidean, etc.)"
+            }
+        },
+        "retrieval_system": {
+            "recommendation": "Advanced retrieval method (e.g., RAG with reranking, Hybrid RAG+BM25, GraphRAG for connected data)",
+            "components": {
+                "retriever": "Primary retrieval method",
+                "reranker": "Model for reranking (e.g., Cohere Rerank, BGE-reranker)",
+                "hybrid_search": "Combining vector + keyword search",
+                "query_expansion": "Methods to improve recall"
+            },
+            "reasoning": "How this enhances the agent's capabilities"
+        },
+        "embedding_model": {
+            "recommendation": "Best embedding model for this use case (e.g., OpenAI ada-002 for general, BGE-large for multilingual, Instructor for task-specific)",
+            "dimensions": "Embedding dimensions and why",
+            "special_requirements": "Any specific needs (multilingual, domain-specific, etc.)"
+        },
+        "orchestration": {
+            "framework": "Tool for managing workflows (e.g., LangChain for flexibility, AutoGen for multi-agent, CrewAI for team simulation, Custom for specific needs)",
+            "reasoning": "Why this framework fits the requirements",
+            "agent_architecture": "Single agent, multi-agent, or hierarchical"
+        },
+        "integrations": [
+            {
+                "service": "API or service name",
+                "purpose": "What it's used for",
+                "security": "How credentials are handled"
+            }
+        ],
+        "frontend": {
+            "framework": "UI framework if needed",
+            "features": "Key UI features and interactions"
+        },
+        "monitoring": {
+            "tools": "Observability and analytics tools (e.g., LangSmith, Helicone, Custom dashboards)",
+            "metrics": "Key metrics to track",
+            "llm_monitoring": "Specific LLM usage and performance tracking"
+        },
+        "infrastructure": {
+            "hosting": "Recommended hosting solution",
+            "scalability": "How the system scales",
+            "gpu_requirements": "If needed for local model deployment"
+        }
+    },
+    "security_considerations": {
+        "data_handling": {
+            "encryption_at_rest": "How data is encrypted when stored",
+            "encryption_in_transit": "How data is encrypted during transmission",
+            "data_retention": "Policies for data retention and deletion"
+        },
+        "access_control": {
+            "authentication": "Method for user authentication",
+            "authorization": "Role-based access control details",
+            "api_security": "API key management and rotation"
+        },
+        "compliance": {
+            "standards": ["Relevant compliance standards (GDPR, HIPAA, SOC2, etc.)"],
+            "audit_logging": "What actions are logged for audit"
+        },
+        "advanced_security_options": {
+            "private_deployment": "Options for on-premise or VPC deployment",
+            "zero_trust": "Zero-trust architecture considerations",
+            "secrets_management": "Using services like HashiCorp Vault or AWS Secrets Manager",
+            "data_isolation": "Multi-tenant data isolation strategies"
+        }
+    },
+    "client_requirements": [
+        "Specific access or resources needed from the client with detailed explanation",
+        "API keys or credentials required and how they'll be secured",
+        "Data access requirements and compliance needs",
+        "Infrastructure requirements if any",
+        ...
+    ],
+    "future_enhancements": [
+        {
+            "enhancement": "Advanced feature or capability",
+            "description": "Detailed description of what this would add",
+            "impact": "Business impact and user benefits",
+            "implementation_effort": "Estimated effort to implement"
+        },
+        ... (at least 4-5 innovative enhancement ideas)
+    ],
+    "implementation_estimate": {
+        "traditional_approach": {
+            "hours": "Estimated hours for traditional development",
+            "breakdown": {
+                "planning": "X hours - detailed planning activities",
+                "development": "X hours - core development work",
+                "testing": "X hours - comprehensive testing",
+                "deployment": "X hours - deployment and configuration",
+                "documentation": "X hours - user and technical documentation"
+            },
+            "total_cost": "Estimated cost at $150/hour"
+        },
+        "ai_powered_approach": {
+            "hours": "10% of traditional hours",
+            "methodology": "Using AI-driven development with advanced tooling",
+            "ai_tools_used": ["List of AI tools that accelerate development"],
+            "cost_savings": "90% reduction from traditional approach",
+            "total_cost": "10% of traditional cost",
+            "additional_benefits": ["Faster iteration", "Built-in best practices", "Continuous improvement"]
+        }
+    },
+    "summary_message": "A friendly message summarizing what we've created and the value proposition",
+    "client_requirements": [
+        "List of specific requirements gathered from the client",
+        "Technical requirements and constraints",
+        "Business goals and objectives",
+        "Integration requirements",
+        "Performance expectations"
+    ],
+    "security_considerations": [
+        "Data encryption at rest and in transit",
+        "API authentication and authorization",
+        "Role-based access control",
+        "Audit logging and monitoring",
+        "Compliance with relevant regulations",
+        "Regular security updates and patches"
+    ]
+}
+
+IMPORTANT GUIDELINES FOR LLM SELECTION:
+- NEVER default to just GPT-4 for everything
+- Consider the specific use case: Claude 3 excels at complex reasoning and code, Gemini 1.5 Pro handles long context best, GPT-4 is versatile
+- For vision tasks: Always recommend specialized vision models
+- For high-volume tasks: Always include a fast inference option
+- Always suggest LLM routing when multiple capabilities are needed
+- Consider cost implications and provide optimization strategies
+- Include open-source alternatives when appropriate (Llama 3, Mistral, etc.)
+
+OTHER IMPORTANT NOTES: 
+- ALWAYS include vector databases for long-term memory and training, even for simple use cases
+- ALWAYS include advanced retrieval (RAG/CAG/MCP) to ensure scalability
+- Provide detailed explanations for each technical choice
+- Include comprehensive security considerations with specific threat scenarios
+- Generate innovative future enhancement ideas that extend the core functionality
+- Be specific and detailed in all sections
+- Each implementation step must be 3-4 sentences minimum with technical depth
+- Summary must be 4-6 sentences covering all key aspects
+- Provide at least 6-8 implementation steps (minimum)
+- Include specific code examples, API patterns, and data structures where relevant
+- Reference any company systems or context provided above for better alignment`;
+      
+      specContents.push({ role: 'user', parts: [{ text: specPrompt }] });
+      
+      try {
+        let specText;
+        
+        if (useClaude) {
+          // Use Claude for specification generation
+          const claudeMessages = [];
+          for (const m of conversation_history) {
+            if (!m || !m.role || !m.content) continue;
+            claudeMessages.push({ role: m.role, content: String(m.content) });
+          }
+          claudeMessages.push({ role: 'user', content: String(message) });
+          claudeMessages.push({ role: 'user', content: specPrompt });
+          
+          const specResult = await generateClaudeContent(
+            IDEATOR_SYSTEM_PROMPT + companyContext,
+            claudeMessages,
+            0.3,
+            maxDetail ? 8192 : 4096
+          );
+          specText = specResult.response.text();
+        } else {
+          // Use Gemini for specification generation
+          const specResult = await generateWithFallback(genAI, specModelBase, { contents: specContents, generationConfig: { maxOutputTokens: maxDetail ? 8192 : 4096 } });
+          specText = specResult.response.text();
+        }
+        
+        // Extract JSON from response
+        let jsonStr = specText;
+        if (jsonStr.includes('```json')) {
+          jsonStr = jsonStr.split('```json')[1].split('```')[0].trim();
+        } else if (jsonStr.includes('```')) {
+          jsonStr = jsonStr.split('```')[1].split('```')[0].trim();
+        }
+        
+        console.log('[Spec Generation] Attempting to parse JSON response...');
+        const specification = JSON.parse(jsonStr);
+        console.log('[Spec Generation] Successfully parsed specification:', { title: specification.title, hasSteps: !!specification.steps, hasBuildPhases: !!specification.build_phases });
+        
+        // Ensure we have a summary message
+        if (!specification.summary_message) {
+          specification.summary_message = `Great! I've created a comprehensive specification for your "${specification.title}". This includes all the technical details, implementation steps, and requirements we discussed. You can now view the full project scope in your projects list.`;
+        }
+        
+        // Ensure security_considerations is always populated as an array of bullets for UI
+        const defaultSecurity = [
+          'Data encryption at rest and in transit',
+          'API authentication and authorization',
+          'Role-based access control',
+          'Audit logging and monitoring',
+          'Compliance with relevant regulations (GDPR/SOC2 as applicable)'
+        ];
+        if (!specification.security_considerations) {
+          specification.security_considerations = defaultSecurity;
+        } else if (!Array.isArray(specification.security_considerations)) {
+          try {
+            // Flatten object to bullets
+            const bullets = [];
+            const walk = (v, path=[]) => {
+              if (v == null) return;
+              if (Array.isArray(v)) v.forEach(x => walk(x, path));
+              else if (typeof v === 'object') {
+                Object.entries(v).forEach(([k, val]) => {
+                  if (val != null && typeof val !== 'object') bullets.push(`${[...path, k].join(' / ')}: ${String(val)}`);
+                  else walk(val, [...path, k]);
+                });
+              } else bullets.push(String(v));
+            };
+            walk(specification.security_considerations);
+            specification.security_considerations = bullets.length ? bullets : defaultSecurity;
+          } catch {
+            specification.security_considerations = defaultSecurity;
+          }
+        }
+        
+        console.log('[Spec Generation] Sending complete specification to frontend');
+        res.setHeader('Content-Type', 'application/json');
+        res.json({
+          response: specification.summary_message,
+          complete: true,
+          specification: specification
+        });
+      } catch (e) {
+        console.error('[Spec Generation] ERROR generating specification:', e);
+        console.error('[Spec Generation] Error stack:', e.stack);
+        // Fall back to regular response
+        const modelBase = {
+          model: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
+          systemInstruction: IDEATOR_SYSTEM_PROMPT,
+        };
+        
+        const contents = [];
+        for (const m of conversation_history) {
+          if (!m || !m.role || !m.content) continue;
+          const role = m.role === 'assistant' ? 'model' : 'user';
+          contents.push({ role, parts: [{ text: String(m.content) }] });
+        }
+        contents.push({ role: 'user', parts: [{ text: String(message) }] });
+        
+        // Force non-stream generateContent for consistency; simulate SSE chunking
+        const fallback = await generateWithFallback(genAI, modelBase, { contents });
+        const text = fallback.response.text() || '';
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        const parts = text.split(/(\s+)/);
+        for (const p of parts) { if (p) res.write(`data: ${JSON.stringify({ content: p })}\n\n`); }
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        res.end();
+      }
+    } else {
+      // Regular conversation - continue gathering information
+      try {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        
+        if (useClaude) {
+          // Use Claude for regular conversation
+          const claudeMessages = [];
+          for (const m of conversation_history) {
+            if (!m || !m.role || !m.content) continue;
+            claudeMessages.push({ role: m.role, content: String(m.content) });
+          }
+          if (message) claudeMessages.push({ role: 'user', content: String(message) });
+          
+          const stream = await generateClaudeContentStream(
+            IDEATOR_SYSTEM_PROMPT + companyContext,
+            claudeMessages,
+            0.7,
+            2048
+          );
+          
+          // Stream Claude response
+          for await (const chunk of stream) {
+            if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+              res.write(`data: ${JSON.stringify({ content: chunk.delta.text })}\n\n`);
+            }
+          }
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+          res.end();
+        } else {
+          // Use Gemini for regular conversation
+          const modelBase = {
+            model: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
+            systemInstruction: IDEATOR_SYSTEM_PROMPT + companyContext,
+          };
+
+          const contents = [];
+          for (const m of conversation_history) {
+            if (!m || !m.role || !m.content) continue;
+            const role = m.role === 'assistant' ? 'model' : 'user';
+            contents.push({ role, parts: [{ text: String(m.content) }] });
+          }
+          
+          if (message) contents.push({ role: 'user', parts: [{ text: String(message) }] });
+
+          const fallback = await generateWithFallback(genAI, modelBase, { contents });
+          const text = fallback.response.text() || '';
+          const parts = text.split(/(\s+)/);
+          for (const p of parts) { if (p) res.write(`data: ${JSON.stringify({ content: p })}\n\n`); }
+          res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+          res.end();
+        }
+      } catch (e) {
+        console.error('Error in agent-ideator/chat:', e);
+        try {
+          res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+          res.write(`data: ${JSON.stringify({ error: e.message || 'stream error' })}\n\n`);
+          res.end();
+        } catch {
+          res.status(500).json({ ok: false, error: e.message });
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error in /agent-ideator/chat (outer):', e);
+    try {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write(`data: ${JSON.stringify({ error: (e && e.message) ? e.message : 'error' })}\n\n`);
+      return res.end();
+    } catch (err2) {
+      return res.status(500).json({ ok: false, error: (e && e.message) ? e.message : 'error' });
+    }
+  }
+});
+
+// Save draft project with chat history
+app.post('/projects/draft', auth(), async (req, res) => {
+  try {
+    const { title, conversation_history = [], clientId } = req.body || {};
+    
+    // Determine the client_id
+    let targetClientId = req.user.id;
+    
+    if (req.user.role === 'advisor') {
+      // Advisors must specify a clientId
+      if (!clientId) {
+        return res.status(400).json({ ok: false, error: 'Advisors must specify clientId' });
+      }
+      // Verify advisor has access to this client
+      const access = await pool.query(
+        'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+        [req.user.id, Number(clientId)]
+      );
+      if (access.rowCount === 0) {
+        return res.status(403).json({ ok: false, error: 'Access denied to this client' });
+      }
+      targetClientId = Number(clientId);
+    }
+    
+    // Create a draft project
+    const pr = await pool.query(
+      'insert into projects(client_id, name, status, eta, chat_history) values($1,$2,$3,$4,$5) returning id',
+      [targetClientId, title || 'Draft Project', 'Draft', null, JSON.stringify(conversation_history)]
+    );
+    
+    res.json({ ok: true, projectId: pr.rows[0].id });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update draft project chat history
+app.put('/projects/:id/draft', auth(), async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    const { title, conversation_history = [] } = req.body || {};
+    
+    // Verify ownership or advisor access
+    let pr;
+    if (req.user.role === 'client') {
+      pr = await pool.query('select id from projects where id=$1 and client_id=$2 and status=$3', [projectId, req.user.id, 'Draft']);
+    } else if (req.user.role === 'advisor') {
+      // Verify advisor has access to the client who owns this project
+      pr = await pool.query(
+        `select p.id from projects p 
+         join advisor_clients ac on p.client_id = ac.client_id 
+         where p.id = $1 and ac.advisor_id = $2 and p.status = 'Draft'`,
+        [projectId, req.user.id]
+      );
+    } else {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    if (pr.rowCount === 0) return res.status(404).json({ ok: false, error: 'Draft project not found' });
+    
+    // Update the draft
+    await pool.query(
+      'update projects set name=$1, chat_history=$2 where id=$3',
+      [title, JSON.stringify(conversation_history), projectId]
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get draft project with chat history
+app.get('/projects/:id/draft', auth(), async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    
+    let r;
+    if (req.user.role === 'client') {
+      r = await pool.query(
+        'select id, name, status, chat_history from projects where id=$1 and client_id=$2 and status=$3',
+        [projectId, req.user.id, 'Draft']
+      );
+    } else if (req.user.role === 'advisor') {
+      // Verify advisor has access to the client who owns this project
+      r = await pool.query(
+        `select p.id, p.name, p.status, p.chat_history 
+         from projects p 
+         join advisor_clients ac on p.client_id = ac.client_id 
+         where p.id = $1 and ac.advisor_id = $2 and p.status = 'Draft'`,
+        [projectId, req.user.id]
+      );
+    } else {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    if (r.rowCount === 0) return res.status(404).json({ ok: false, error: 'Draft project not found' });
+    
+    const project = r.rows[0];
+    res.json({
+      ok: true,
+      project: {
+        id: project.id,
+        name: project.name,
+        status: project.status,
+        conversation_history: project.chat_history || []
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Delete draft project
+app.delete('/projects/:id/draft', auth(), async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    
+    // Verify ownership or advisor access, then delete
+    let pr;
+    if (req.user.role === 'client') {
+      pr = await pool.query('delete from projects where id=$1 and client_id=$2 and status=$3 returning id', [projectId, req.user.id, 'Draft']);
+    } else if (req.user.role === 'advisor') {
+      // For advisors, first verify access then delete
+      const access = await pool.query(
+        `select p.id from projects p 
+         join advisor_clients ac on p.client_id = ac.client_id 
+         where p.id = $1 and ac.advisor_id = $2 and p.status = 'Draft'`,
+        [projectId, req.user.id]
+      );
+      if (access.rowCount > 0) {
+        pr = await pool.query('delete from projects where id=$1 and status=$2 returning id', [projectId, 'Draft']);
+      } else {
+        pr = { rowCount: 0 };
+      }
+    } else {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    if (pr.rowCount === 0) return res.status(404).json({ ok: false, error: 'Draft project not found' });
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Persist an agent idea and also create a project for the client
+app.post('/agent-ideas', auth(), async (req, res) => {
+  try {
+    console.log('[Agent Ideas] Received POST request to save agent idea');
+    console.log('[Agent Ideas] Request body keys:', Object.keys(req.body));
+    console.log('[Agent Ideas] Title:', req.body.title);
+    console.log('[Agent Ideas] ProjectId:', req.body.projectId);
+    console.log('[Agent Ideas] Mode:', req.body.mode);
+    console.log('[Agent Ideas] AssignClientId:', req.body.assignClientId);
+    
+    const id = String(Date.now());
+    const { title, summary, steps = [], agent_stack = {}, client_requirements = [], implementation_estimate = null, security_considerations = null, future_enhancements = null, build_phases = null, projectId = null, assignClientId = null, nodeId = null, mode = 'project' } = req.body || {};
+    
+    let finalProjectId = projectId;
+    let ownerClientId = req.user.role === 'client' ? req.user.id : null;
+    if (req.user.role === 'advisor' && assignClientId) {
+      // Verify advisor manages this client
+      const access = await pool.query('select 1 from advisor_clients where advisor_id=$1 and client_id=$2', [req.user.id, assignClientId]);
+      if (access.rowCount === 0) {
+        console.log('[Agent Ideas] ERROR: Access denied for client');
+        return res.status(403).json({ ok: false, error: 'Access denied for client' });
+      }
+      ownerClientId = Number(assignClientId);
+    }
+    
+    // If projectId is provided (from draft), update the existing project
+    if (mode === 'idea') {
+      // Store as an idea only (no project yet). ownerClientId must be set for advisors; for clients use req.user.id
+      const ideaUserId = ownerClientId || req.user.id;
+      await pool.query(
+        'insert into agent_ideas(id, title, summary, steps, agent_stack, client_requirements, implementation_estimate, security_considerations, future_enhancements, build_phases, user_id, project_id, status) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+        [id, title, summary, JSON.stringify(steps), JSON.stringify(agent_stack), JSON.stringify(client_requirements), JSON.stringify(implementation_estimate), JSON.stringify(security_considerations), JSON.stringify(future_enhancements), JSON.stringify(build_phases), ideaUserId, null, 'idea']
+      );
+      return res.json({ ok: true, id, projectId: null });
+    }
+
+    if (projectId) {
+      console.log('[Agent Ideas] Updating existing draft project:', projectId);
+      await pool.query(
+        'update projects set status=$1, name=$4 where id=$2 and client_id=$3',
+        ['Pending Advisor', projectId, ownerClientId || req.user.id, title || 'New Project']
+      );
+      console.log('[Agent Ideas] Draft project updated successfully');
+    } else {
+      // Create a new project as Pending Advisor until advisor approves
+      console.log('[Agent Ideas] Creating new project for client:', ownerClientId || req.user.id);
+      const pr = await pool.query('insert into projects(client_id, name, status, eta) values($1,$2,$3,$4) returning id', [ownerClientId || req.user.id, title || 'New Project', 'Pending Advisor', null]);
+      finalProjectId = pr.rows[0].id;
+      console.log('[Agent Ideas] New project created with ID:', finalProjectId);
+    }
+    
+    console.log('[Agent Ideas] Inserting agent idea into database...');
+    await pool.query(
+      'insert into agent_ideas(id, title, summary, steps, agent_stack, client_requirements, implementation_estimate, security_considerations, future_enhancements, build_phases, user_id, project_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+      [id, title, summary, JSON.stringify(steps), JSON.stringify(agent_stack), JSON.stringify(client_requirements), JSON.stringify(implementation_estimate), JSON.stringify(security_considerations), JSON.stringify(future_enhancements), JSON.stringify(build_phases), req.user.id, finalProjectId]
+    );
+    console.log('[Agent Ideas] Agent idea saved successfully with ID:', id);
+    
+    // Link the project back to the roadmap node if nodeId was provided
+    console.log('[Agent Ideas] Checking nodeId linking:', { nodeId, finalProjectId, hasNodeId: !!nodeId, hasFinalProjectId: !!finalProjectId });
+    if (nodeId && finalProjectId) {
+      const linkResult = await pool.query(
+        'update roadmap_nodes set project_id = $1, status = $2 where id = $3 RETURNING id, title, project_id',
+        [finalProjectId, 'in-progress', Number(nodeId)]
+      );
+      console.log(`[Agent Ideas] Linked project ${finalProjectId} to roadmap node ${nodeId}. Result:`, linkResult.rows[0]);
+    } else {
+      console.log('[Agent Ideas] Skipping node linking - nodeId or finalProjectId missing:', { nodeId, finalProjectId });
+    }
+    
+    console.log('[Agent Ideas] Responding with success:', { ok: true, id, projectId: finalProjectId });
+    res.json({ ok: true, id, projectId: finalProjectId });
+  } catch (e) {
+    console.error('[Agent Ideas] ERROR saving agent idea:', e);
+    console.error('[Agent Ideas] Error stack:', e.stack);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// List ideas for logged-in client (ideas not yet converted)
+app.get('/client/ideas', auth('client'), async (req, res) => {
+  try {
+    const r = await pool.query(
+      `select id, title, summary, implementation_estimate, created_at from agent_ideas 
+       where user_id=$1 and (project_id is null) and coalesce(status,'idea') in ('idea','draft')
+       order by created_at desc limit 50`,
+      [req.user.id]
+    );
+    const ideas = r.rows.map(row => ({
+      id: row.id,
+      title: row.title,
+      summary: row.summary,
+      implementation_estimate: row.implementation_estimate || null,
+      created_at: row.created_at
+    }))
+    res.json({ ok: true, ideas });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Convert a client idea into a project
+app.post('/client/ideas/:id/convert', auth('client'), async (req, res) => {
+  try {
+    const ideaId = String(req.params.id);
+    const r = await pool.query('select id, title from agent_ideas where id=$1 and user_id=$2 and project_id is null', [ideaId, req.user.id]);
+    if (r.rowCount === 0) return res.status(404).json({ ok: false, error: 'Idea not found' });
+    const title = r.rows[0].title || 'New Project';
+    const pr = await pool.query('insert into projects(client_id, name, status, eta) values($1,$2,$3,$4) returning id', [req.user.id, title, 'Pending Advisor', null]);
+    const projectId = pr.rows[0].id;
+    await pool.query('update agent_ideas set project_id=$1, status=$2 where id=$3', [projectId, 'Pending Advisor', ideaId]);
+    res.json({ ok: true, projectId });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// List advisor's own pre-built ideas (not yet assigned to a project)
+app.get('/advisor/ideas', auth('advisor'), async (req, res) => {
+  try {
+    const r = await pool.query(
+      `select id, title, summary, implementation_estimate, created_at from agent_ideas 
+       where user_id=$1 and project_id is null and coalesce(status,'idea') in ('idea','draft')
+       order by created_at desc limit 100`,
+      [req.user.id]
+    );
+    res.json({ ok: true, ideas: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Generic idea detail by id (RBAC: owner advisor/client or admin)
+app.get('/ideas/:id', auth(), async (req, res) => {
+  try {
+    const ideaId = String(req.params.id);
+    let q = 'select * from agent_ideas where id=$1';
+    const params = [ideaId];
+    if (req.user.role === 'advisor') {
+      q += ' and user_id=$2';
+      params.push(req.user.id);
+    } else if (req.user.role === 'client') {
+      q += ' and user_id=$2';
+      params.push(req.user.id);
+    }
+    const r = await pool.query(q, params);
+    if (r.rowCount === 0) return res.status(404).json({ ok: false, error: 'Idea not found' });
+    const row = r.rows[0];
+    const parseJSONMaybe = (v, fallback) => {
+      if (v == null) return fallback;
+      if (typeof v === 'string') {
+        try { return JSON.parse(v); } catch { return fallback; }
+      }
+      return v;
+    };
+    let idea = {
+      id: row.id,
+      title: row.title,
+      summary: row.summary,
+      steps: parseJSONMaybe(row.steps, []),
+      agent_stack: parseJSONMaybe(row.agent_stack, {}),
+      client_requirements: parseJSONMaybe(row.client_requirements, []),
+      implementation_estimate: parseJSONMaybe(row.implementation_estimate, null),
+      security_considerations: parseJSONMaybe(row.security_considerations, []),
+      future_enhancements: parseJSONMaybe(row.future_enhancements, []),
+      status: row.status,
+      project_id: row.project_id,
+      created_at: row.created_at
+    };
+    // If this client's idea is thin (older assignment that lacked full fields), enrich from their advisor's prebuilt with the same title
+    const isEmpty = (v) => v == null || (Array.isArray(v) && v.length === 0) || (typeof v === 'object' && !Array.isArray(v) && Object.keys(v || {}).length === 0);
+    const thin = isEmpty(idea.steps) && isEmpty(idea.agent_stack) && isEmpty(idea.client_requirements) && isEmpty(idea.security_considerations) && isEmpty(idea.future_enhancements);
+    if (thin && req.user.role === 'client') {
+      try {
+        const ac = await pool.query('select advisor_id from advisor_clients where client_id=$1 limit 1', [req.user.id]);
+        if (ac.rowCount > 0) {
+          const advisorId = ac.rows[0].advisor_id;
+          const fill = await pool.query(
+            `select * from agent_ideas where user_id=$1 and project_id is null and title=$2 order by created_at desc limit 1`,
+            [advisorId, idea.title]
+          );
+          if (fill.rowCount > 0) {
+            const src = fill.rows[0];
+            idea = {
+              ...idea,
+              steps: parseJSONMaybe(src.steps, idea.steps),
+              agent_stack: parseJSONMaybe(src.agent_stack, idea.agent_stack),
+              client_requirements: parseJSONMaybe(src.client_requirements, idea.client_requirements),
+              implementation_estimate: parseJSONMaybe(src.implementation_estimate, idea.implementation_estimate),
+              security_considerations: parseJSONMaybe(src.security_considerations, idea.security_considerations),
+              future_enhancements: parseJSONMaybe(src.future_enhancements, idea.future_enhancements),
+            };
+          }
+        }
+        // If still thin, fall back to any latest prebuilt with the same title (cross-owner) to populate fields
+        const stillThin = isEmpty(idea.steps) && isEmpty(idea.agent_stack) && isEmpty(idea.client_requirements) && isEmpty(idea.security_considerations) && isEmpty(idea.future_enhancements);
+        if (stillThin) {
+          // First try exact title anywhere
+          let anyFill = await pool.query(
+            `select * from agent_ideas where project_id is null and coalesce(status,'idea') in ('idea','draft') and title=$1 order by created_at desc limit 1`,
+            [idea.title]
+          );
+          // If not found, try fuzzy match using a prefix of the title
+          if (anyFill.rowCount === 0) {
+            const frag = (idea.title || '').slice(0, 24);
+            if (frag) {
+              anyFill = await pool.query(
+                `select * from agent_ideas where project_id is null and coalesce(status,'idea') in ('idea','draft') and title ilike $1 order by created_at desc limit 1`,
+                [`%${frag}%`]
+              );
+            }
+          }
+          if (anyFill.rowCount > 0) {
+            const src = anyFill.rows[0];
+            idea = {
+              ...idea,
+              steps: parseJSONMaybe(src.steps, idea.steps),
+              agent_stack: parseJSONMaybe(src.agent_stack, idea.agent_stack),
+              client_requirements: parseJSONMaybe(src.client_requirements, idea.client_requirements),
+              implementation_estimate: parseJSONMaybe(src.implementation_estimate, idea.implementation_estimate),
+              security_considerations: parseJSONMaybe(src.security_considerations, idea.security_considerations),
+              future_enhancements: parseJSONMaybe(src.future_enhancements, idea.future_enhancements),
+            };
+          }
+        }
+      } catch {}
+    }
+    res.json({ ok: true, idea });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update an idea (advisor owner or admin)
+app.put('/ideas/:id', auth(), async (req, res) => {
+  try {
+    if (!(req.user.role === 'advisor' || req.user.role === 'admin')) return res.status(403).json({ ok: false, error: 'Forbidden' });
+    const ideaId = String(req.params.id);
+    // Ensure ownership for advisors
+    if (req.user.role === 'advisor') {
+      const own = await pool.query('select 1 from agent_ideas where id=$1 and user_id=$2', [ideaId, req.user.id]);
+      if (own.rowCount === 0) return res.status(403).json({ ok: false, error: 'Not owner' });
+    }
+    const allowed = ['title','summary','steps','agent_stack','client_requirements','implementation_estimate','security_considerations','future_enhancements','build_phases','status'];
+    const sets = [];
+    const params = [];
+    let idx = 1;
+    for (const key of allowed) {
+      if (key in req.body) {
+        if (['steps','agent_stack','client_requirements','implementation_estimate','security_considerations','future_enhancements','build_phases'].includes(key)) {
+          sets.push(`${key} = $${idx++}`);
+          params.push(JSON.stringify(req.body[key]));
+        } else {
+          sets.push(`${key} = $${idx++}`);
+          params.push(req.body[key]);
+        }
+      }
+    }
+    if (sets.length === 0) return res.json({ ok: true });
+    params.push(ideaId);
+    await pool.query(`update agent_ideas set ${sets.join(', ')}, updated_at = now() where id=$${idx}`, params);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Delete a client idea (only if not yet converted)
+app.delete('/client/ideas/:id', auth('client'), async (req, res) => {
+  try {
+    const ideaId = String(req.params.id);
+    const r = await pool.query('delete from agent_ideas where id=$1 and user_id=$2 and project_id is null', [ideaId, req.user.id]);
+    if (r.rowCount === 0) return res.status(404).json({ ok: false, error: 'Idea not found' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get latest agent idea by project id
+app.get('/agent-ideas/by-project/:projectId', auth(), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    if (!projectId) return res.status(400).json({ ok: false, error: 'Invalid projectId' });
+    
+    // Permission check based on role
+    if (req.user.role === 'client') {
+      // Clients can only access their own projects
+      const pr = await pool.query('select id from projects where id=$1 and client_id=$2', [projectId, req.user.id]);
+      if (pr.rowCount === 0) return res.status(404).json({ ok: false, error: 'Project not found' });
+    } else if (req.user.role === 'advisor') {
+      // Advisors can access projects of their assigned clients
+      const access = await pool.query(
+        `select 1 from projects p 
+         join advisor_clients ac on p.client_id = ac.client_id 
+         where p.id = $1 and ac.advisor_id = $2`,
+        [projectId, req.user.id]
+      );
+      if (access.rowCount === 0) return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    // Admins have access to all projects
+    const r = await pool.query(
+      `select ai.*, p.name as project_name from agent_ideas ai join projects p on ai.project_id=p.id
+       where ai.project_id=$1 order by ai.created_at desc limit 1`,
+      [projectId]
+    );
+    if (r.rowCount === 0) return res.json({ ok: true, idea: null });
+    const row = r.rows[0];
+    // Parse JSON fields if needed
+    const idea = {
+      id: row.id,
+      title: row.title,
+      summary: row.summary,
+      steps: row.steps || [],
+      agent_stack: row.agent_stack || {},
+      client_requirements: row.client_requirements || [],
+      implementation_estimate: row.implementation_estimate || null,
+      security_considerations: row.security_considerations || [],
+      future_enhancements: row.future_enhancements || [],
+      build_phases: row.build_phases || [],
+      status: row.status,
+      agent_type: row.agent_type,
+      project_id: row.project_id,
+      project_name: row.project_name,
+    };
+    res.json({ ok: true, idea });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update agent idea by id (partial update)
+app.put('/agent-ideas/:id', auth(), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const allowed = ['title','summary','steps','agent_stack','client_requirements','implementation_estimate','security_considerations','future_enhancements','build_phases','status','agent_type'];
+    const body = req.body || {};
+    const sets = [];
+    const values = [];
+    let i = 1;
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) {
+        sets.push(`${key}=$${i++}`);
+        const v = ['steps','agent_stack','client_requirements','implementation_estimate','security_considerations','future_enhancements','build_phases'].includes(key) && body[key] != null ? JSON.stringify(body[key]) : body[key];
+        values.push(v);
+      }
+    }
+    if (sets.length === 0) return res.status(400).json({ ok: false, error: 'No fields to update' });
+    values.push(id);
+    const sql = `update agent_ideas set ${sets.join(', ')}, updated_at=now() where id=$${values.length}`;
+    await pool.query(sql, values);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Project communications endpoints
+app.get('/projects/:id/messages', auth(), async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    if (!projectId) return res.status(400).json({ ok: false, error: 'Invalid project id' });
+    // Access control: client must own project, advisor must be assigned
+    if (req.user.role === 'client') {
+      const pr = await pool.query('select 1 from projects where id=$1 and client_id=$2', [projectId, req.user.id]);
+      if (pr.rowCount === 0) return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    if (req.user.role === 'advisor') {
+      const access = await pool.query(
+        `select 1 from projects p join advisor_clients ac on p.client_id=ac.client_id where p.id=$1 and ac.advisor_id=$2`,
+        [projectId, req.user.id]
+      );
+      if (access.rowCount === 0) return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    // Admin can read all
+    const r = await pool.query(
+      `select m.id, m.content, m.created_at, u.name as author_name, u.role as author_role
+       from project_messages m left join users u on m.user_id=u.id
+       where m.project_id=$1 order by m.created_at asc`,
+      [projectId]
+    );
+    res.json({ ok: true, messages: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/projects/:id/messages', auth(), async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    const { content } = req.body || {};
+    if (!content || !content.trim()) return res.status(400).json({ ok: false, error: 'Message content required' });
+    // Access checks same as GET
+    if (req.user.role === 'client') {
+      const pr = await pool.query('select 1 from projects where id=$1 and client_id=$2', [projectId, req.user.id]);
+      if (pr.rowCount === 0) return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    if (req.user.role === 'advisor') {
+      const access = await pool.query(
+        `select 1 from projects p join advisor_clients ac on p.client_id=ac.client_id where p.id=$1 and ac.advisor_id=$2`,
+        [projectId, req.user.id]
+      );
+      if (access.rowCount === 0) return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    await pool.query('insert into project_messages(project_id, user_id, content) values($1,$2,$3)', [projectId, req.user.id, content]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Client aggregated communications (messages across all owned projects)
+app.get('/client/messages', auth('client'), async (req, res) => {
+  try {
+    const r = await pool.query(
+      `select 
+         m.id,
+         m.project_id,
+         m.user_id,
+         m.content,
+         m.created_at,
+         p.name as project_name,
+         u.name as author_name,
+         u.role as author_role
+       from project_messages m
+       join projects p on m.project_id = p.id and p.client_id = $1
+       left join users u on m.user_id = u.id
+       order by m.created_at desc
+       limit 500`,
+      [req.user.id]
+    );
+    res.json({ ok: true, messages: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Client send message to a specific project
+app.post('/client/messages', auth('client'), async (req, res) => {
+  try {
+    const { projectId, content } = req.body || {};
+    const project_id = Number(projectId);
+    if (!project_id || !content || !content.trim()) return res.status(400).json({ ok: false, error: 'projectId and content required' });
+    if (!(await ensureClientOwns(project_id, req.user.id))) return res.status(403).json({ ok: false, error: 'Access denied' });
+    await pool.query('insert into project_messages(project_id, user_id, content) values($1,$2,$3)', [project_id, req.user.id, content]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Credentials endpoints
+app.get('/credentials', auth('client'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, name, type, value, file_name, is_predefined, created_at FROM credentials WHERE user_id = $1 ORDER BY is_predefined DESC, name ASC',
+      [req.user.id]
+    );
+    res.json({ ok: true, credentials: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/credentials', auth('client'), async (req, res) => {
+  try {
+    const { name, type, value, file_data, file_name } = req.body;
+    
+    if (!name || !type || (type !== 'text' && type !== 'file')) {
+      return res.status(400).json({ ok: false, error: 'Invalid credential data' });
+    }
+    
+    if (type === 'text' && !value) {
+      return res.status(400).json({ ok: false, error: 'Text value is required' });
+    }
+    
+    if (type === 'file' && (!file_data || !file_name)) {
+      return res.status(400).json({ ok: false, error: 'File data and name are required' });
+    }
+    
+    const result = await pool.query(
+      'INSERT INTO credentials (user_id, name, type, value, file_data, file_name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      [req.user.id, name, type, type === 'text' ? value : null, type === 'file' ? Buffer.from(file_data, 'base64') : null, file_name]
+    );
+    
+    res.json({ ok: true, credentialId: result.rows[0].id });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.put('/credentials/:id', auth('client'), async (req, res) => {
+  try {
+    const credentialId = Number(req.params.id);
+    const { name, type, value, file_data, file_name } = req.body;
+    
+    // Verify ownership
+    const owner = await pool.query('SELECT user_id FROM credentials WHERE id = $1', [credentialId]);
+    if (owner.rowCount === 0 || owner.rows[0].user_id !== req.user.id) {
+      return res.status(404).json({ ok: false, error: 'Credential not found' });
+    }
+    
+    // Update the credential
+    const updates = ['updated_at = NOW()'];
+    const values = [];
+    let paramCount = 1;
+    
+    if (name !== undefined) {
+      updates.push(`name = $${paramCount++}`);
+      values.push(name);
+    }
+    
+    if (type === 'text' && value !== undefined) {
+      updates.push(`value = $${paramCount++}, file_data = NULL, file_name = NULL`);
+      values.push(value);
+    }
+    
+    if (type === 'file' && file_data !== undefined && file_name !== undefined) {
+      updates.push(`file_data = $${paramCount++}, file_name = $${paramCount++}, value = NULL`);
+      values.push(Buffer.from(file_data, 'base64'), file_name);
+    }
+    
+    values.push(credentialId);
+    
+    await pool.query(
+      `UPDATE credentials SET ${updates.join(', ')} WHERE id = $${paramCount}`,
+      values
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/credentials/:id', auth('client'), async (req, res) => {
+  try {
+    const credentialId = Number(req.params.id);
+    
+    // Delete only if owned by user and not predefined
+    const result = await pool.query(
+      'DELETE FROM credentials WHERE id = $1 AND user_id = $2 AND is_predefined = FALSE RETURNING id',
+      [credentialId, req.user.id]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Credential not found or cannot be deleted' });
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Download credential file
+app.get('/credentials/:id/download', auth('client'), async (req, res) => {
+  try {
+    const credentialId = Number(req.params.id);
+    
+    // Get credential file data
+    const result = await pool.query(
+      'SELECT file_data, file_name FROM credentials WHERE id = $1 AND user_id = $2 AND type = $3',
+      [credentialId, req.user.id, 'file']
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'File not found' });
+    }
+    
+    const { file_data, file_name } = result.rows[0];
+    
+    if (!file_data) {
+      return res.status(404).json({ ok: false, error: 'No file data available' });
+    }
+    
+    // Set appropriate headers for file download
+    res.setHeader('Content-Disposition', `attachment; filename="${file_name || 'credential-file'}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    
+    // Send the file data
+    res.send(file_data);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ===========================
+// USER SYSTEMS ENDPOINTS
+// ===========================
+
+// Get user systems
+app.get('/user-systems', auth('client'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, name, description, credentials, created_at, updated_at FROM user_systems WHERE user_id = $1 ORDER BY name ASC',
+      [req.user.id]
+    );
+    res.json({ ok: true, systems: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Add user system
+app.post('/user-systems', auth('client'), async (req, res) => {
+  try {
+    const { name, description, credentials } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ ok: false, error: 'System name is required' });
+    }
+    
+    const result = await pool.query(
+      'INSERT INTO user_systems (user_id, name, description, credentials) VALUES ($1, $2, $3, $4) RETURNING *',
+      [req.user.id, name, description || null, credentials || null]
+    );
+    
+    res.json({ ok: true, system: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update user system
+app.put('/user-systems/:id', auth('client'), async (req, res) => {
+  try {
+    const systemId = Number(req.params.id);
+    const { name, description, credentials } = req.body;
+    
+    // Verify ownership
+    const owner = await pool.query('SELECT user_id FROM user_systems WHERE id = $1', [systemId]);
+    if (owner.rowCount === 0 || owner.rows[0].user_id !== req.user.id) {
+      return res.status(404).json({ ok: false, error: 'System not found' });
+    }
+    
+    await pool.query(
+      'UPDATE user_systems SET name = $1, description = $2, credentials = $3, updated_at = NOW() WHERE id = $4',
+      [name, description, credentials, systemId]
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Delete user system
+app.delete('/user-systems/:id', auth('client'), async (req, res) => {
+  try {
+    const systemId = Number(req.params.id);
+    
+    const result = await pool.query(
+      'DELETE FROM user_systems WHERE id = $1 AND user_id = $2 RETURNING id',
+      [systemId, req.user.id]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'System not found' });
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// AI generate system description
+app.post('/user-systems/generate-description', auth('client'), async (req, res) => {
+  try {
+    const { systemName } = req.body;
+    
+    if (!systemName) {
+      return res.status(400).json({ ok: false, error: 'System name is required' });
+    }
+    
+    const prompt = `Provide a brief 1-2 sentence description of the software/system called "${systemName}". Focus on what it does and its primary use case. Be concise and professional.`;
+    
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+    const result = await model.generateContent(prompt);
+    const description = result.response.text().trim();
+    
+    res.json({ ok: true, description });
+  } catch (e) {
+    console.error('AI description generation error:', e);
+    res.status(500).json({ ok: false, error: 'Failed to generate description' });
+  }
+});
+
+// AI generate company description from website
+app.post('/generate-company-description', auth('client'), async (req, res) => {
+  try {
+    const { websiteUrl } = req.body;
+    
+    if (!websiteUrl) {
+      return res.status(400).json({ ok: false, error: 'Website URL is required' });
+    }
+    
+    // Check for Gemini API key
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ ok: false, error: 'AI service not configured' });
+    }
+    
+    // Fetch the website homepage
+    let websiteContent = '';
+    try {
+      const response = await axios.get(websiteUrl, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; nBrain-Bot/1.0)'
+        }
+      });
+      websiteContent = response.data;
+      
+      // Extract text content from HTML (simple approach - remove tags)
+      websiteContent = websiteContent
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .substring(0, 5000); // Limit to first 5000 chars
+    } catch (e) {
+      console.error('Website fetch error:', e);
+      return res.status(400).json({ ok: false, error: 'Unable to fetch website. Please check the URL is correct and publicly accessible.' });
+    }
+    
+    // Use AI to generate company description based on website content
+    const prompt = `Based on this website content, provide a professional 2-3 sentence description of this company. Focus on:
+- What the company does
+- Their main products/services
+- Who they serve
+
+Website content:
+${websiteContent}
+
+Provide only the description, no preamble.`;
+    
+    const genAI = new GoogleGenerativeAI(apiKey, { apiVersion: 'v1' });
+    const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.0-flash-exp' });
+    const result = await model.generateContent(prompt);
+    const description = result.response.text().trim();
+    
+    res.json({ ok: true, description });
+  } catch (e) {
+    console.error('Company description generation error:', e);
+    res.status(500).json({ ok: false, error: 'Failed to generate company description' });
+  }
+});
+
+// Project credentials endpoints
+// Get credentials linked to a project
+app.get('/projects/:projectId/credentials', auth(), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    
+    // Verify access to project
+    if (req.user.role === 'client') {
+      const access = await pool.query('select 1 from projects where id=$1 and client_id=$2', [projectId, req.user.id]);
+      if (access.rowCount === 0) return res.status(403).json({ ok: false, error: 'Access denied' });
+    } else if (req.user.role === 'advisor') {
+      const access = await pool.query(
+        'select 1 from projects p join advisor_clients ac on p.client_id=ac.client_id where p.id=$1 and ac.advisor_id=$2',
+        [projectId, req.user.id]
+      );
+      if (access.rowCount === 0) return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Get linked credentials
+    const result = await pool.query(`
+      select c.id, c.name, c.type, c.file_name, c.is_predefined, pc.created_at as linked_at
+      from project_credentials pc
+      join credentials c on pc.credential_id = c.id
+      where pc.project_id = $1
+      order by pc.created_at desc
+    `, [projectId]);
+    
+    res.json({ ok: true, credentials: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Link a credential to a project
+app.post('/projects/:projectId/credentials', auth('client'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    const { credential_id } = req.body;
+    
+    // Verify project ownership
+    const projectCheck = await pool.query('select 1 from projects where id=$1 and client_id=$2', [projectId, req.user.id]);
+    if (projectCheck.rowCount === 0) return res.status(403).json({ ok: false, error: 'Access denied' });
+    
+    // Verify credential ownership
+    const credCheck = await pool.query('select 1 from credentials where id=$1 and user_id=$2', [credential_id, req.user.id]);
+    if (credCheck.rowCount === 0) return res.status(404).json({ ok: false, error: 'Credential not found' });
+    
+    // Link credential to project
+    await pool.query(
+      'insert into project_credentials(project_id, credential_id) values($1, $2) on conflict do nothing',
+      [projectId, credential_id]
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Unlink a credential from a project
+app.delete('/projects/:projectId/credentials/:credentialId', auth('client'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    const credentialId = Number(req.params.credentialId);
+    
+    // Verify project ownership
+    const projectCheck = await pool.query('select 1 from projects where id=$1 and client_id=$2', [projectId, req.user.id]);
+    if (projectCheck.rowCount === 0) return res.status(403).json({ ok: false, error: 'Access denied' });
+    
+    // Unlink credential
+    await pool.query('delete from project_credentials where project_id=$1 and credential_id=$2', [projectId, credentialId]);
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Document parsing endpoint for file uploads
+const documentUpload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'application/msword', // .doc
+      'text/plain',
+      'text/markdown'
+    ];
+    // Also allow images
+    if (allowedTypes.includes(file.mimetype) || 
+        file.mimetype.startsWith('image/') ||
+        file.originalname.match(/\.(txt|md|jpg|jpeg|png|gif|webp)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. PDF, DOCX, TXT, MD, and images are allowed.'));
+    }
+  }
+});
+
+app.post('/parse-document', documentUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ ok: false, error: 'No file uploaded' });
+    }
+
+    let content = '';
+    const fileBuffer = req.file.buffer;
+    const fileType = req.file.mimetype;
+    const fileName = req.file.originalname;
+
+    // Parse based on file type
+    if (fileType.startsWith('image/')) {
+      // Handle images - just provide context, not actual OCR
+      content = `[Image file uploaded: ${fileName}]\n\nThis is a visual reference (wireframe, dashboard mockup, UI design, or diagram) that provides context for the project requirements. The user will describe what's shown in the image during our conversation.`;
+    } else if (fileType === 'application/pdf') {
+      // Parse PDF
+      const pdfData = await pdfParse(fileBuffer);
+      content = pdfData.text;
+    } else if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || fileType === 'application/msword') {
+      // Parse DOCX/DOC
+      const result = await mammoth.extractRawText({ buffer: fileBuffer });
+      content = result.value;
+    } else if (fileType === 'text/plain' || fileName.match(/\.(txt|md)$/i)) {
+      // Parse TXT/MD
+      content = fileBuffer.toString('utf-8');
+    } else {
+      return res.status(400).json({ ok: false, error: 'Unsupported file type' });
+    }
+
+    // Clean up the content
+    content = content
+      .replace(/\r\n/g, '\n') // Normalize line endings
+      .replace(/\n{3,}/g, '\n\n') // Remove excessive newlines
+      .trim();
+
+    if (!content || content.length < 10) {
+      return res.status(400).json({ ok: false, error: 'Could not extract meaningful content from the document' });
+    }
+
+    // Limit content length (to avoid overwhelming the AI)
+    const maxLength = 50000; // ~50k characters
+    if (content.length > maxLength) {
+      content = content.substring(0, maxLength) + '\n\n[Content truncated due to length...]';
+    }
+
+    res.json({ 
+      ok: true, 
+      content: content,
+      fileName: fileName,
+      fileSize: req.file.size,
+      fileType: fileType
+    });
+  } catch (error) {
+    console.error('Error parsing document:', error);
+    res.status(500).json({ ok: false, error: 'Failed to parse document: ' + error.message });
+  }
+});
+
+// Multer setup for client document uploads
+const clientDocStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const clientDocsDir = path.join(__dirname, 'uploads', 'client-documents');
+    try { fs.mkdirSync(clientDocsDir, { recursive: true }); } catch {}
+    cb(null, clientDocsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, `client-${req.params.clientId || 'unknown'}-${uniqueSuffix}${ext}`);
+  }
+});
+
+const clientDocUpload = multer({ 
+  storage: clientDocStorage,
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
+});
+
+// Upload document for client
+app.post('/advisor/clients/:clientId/documents', auth('advisor'), clientDocUpload.single('file'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    
+    // Verify advisor has access to this client
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      // Clean up uploaded file
+      if (req.file) {
+        try { fs.unlinkSync(req.file.path); } catch {}
+      }
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ ok: false, error: 'No file uploaded' });
+    }
+    
+    // Check if client_documents table exists
+    const tableCheck = await pool.query(
+      `SELECT table_name FROM information_schema.tables 
+       WHERE table_schema = 'public' AND table_name = 'client_documents'`
+    );
+    
+    if (tableCheck.rowCount === 0) {
+      // Table doesn't exist yet
+      if (req.file) {
+        try { fs.unlinkSync(req.file.path); } catch {}
+      }
+      return res.status(503).json({ 
+        ok: false, 
+        error: 'Document storage not available yet. Please run the client_documents migration first.' 
+      });
+    }
+    
+    const { description } = req.body || {};
+    
+    // Save document metadata to database
+    const result = await pool.query(
+      `INSERT INTO client_documents 
+       (client_id, advisor_id, file_name, file_type, file_size, file_path, original_name, description) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+       RETURNING id, file_name, file_type, file_size, original_name, description, uploaded_at`,
+      [
+        clientId,
+        req.user.id,
+        req.file.filename,
+        req.file.mimetype,
+        req.file.size,
+        req.file.path,
+        req.file.originalname,
+        description || null
+      ]
+    );
+    
+    res.json({ ok: true, document: result.rows[0] });
+  } catch (e) {
+    // Clean up file on error
+    if (req.file) {
+      try { fs.unlinkSync(req.file.path); } catch {}
+    }
+    console.error('Error uploading client document:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// List documents for a client
+app.get('/advisor/clients/:clientId/documents', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Check if client_documents table exists (backwards compatibility)
+    const tableCheck = await pool.query(
+      `SELECT table_name FROM information_schema.tables 
+       WHERE table_schema = 'public' AND table_name = 'client_documents'`
+    );
+    
+    if (tableCheck.rowCount === 0) {
+      // Table doesn't exist yet, return empty array
+      return res.json({ ok: true, documents: [] });
+    }
+    
+    const result = await pool.query(
+      `SELECT id, file_name, file_type, file_size, original_name, description, uploaded_at 
+       FROM client_documents 
+       WHERE client_id=$1 
+       ORDER BY uploaded_at DESC`,
+      [clientId]
+    );
+    
+    res.json({ ok: true, documents: result.rows });
+  } catch (e) {
+    console.error('Error listing client documents:', e);
+    // Fallback to empty array on any error
+    res.json({ ok: true, documents: [] });
+  }
+});
+
+// Download a client document
+app.get('/advisor/clients/:clientId/documents/:documentId/download', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const documentId = Number(req.params.documentId);
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Get document info
+    const docResult = await pool.query(
+      'SELECT file_path, original_name, file_type FROM client_documents WHERE id=$1 AND client_id=$2',
+      [documentId, clientId]
+    );
+    
+    if (docResult.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Document not found' });
+    }
+    
+    const doc = docResult.rows[0];
+    
+    // Send file
+    res.download(doc.file_path, doc.original_name, (err) => {
+      if (err) {
+        console.error('Error downloading file:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ ok: false, error: 'Failed to download file' });
+        }
+      }
+    });
+  } catch (e) {
+    console.error('Error in download endpoint:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Delete a client document
+app.delete('/advisor/clients/:clientId/documents/:documentId', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const documentId = Number(req.params.documentId);
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Get document path before deleting
+    const docResult = await pool.query(
+      'SELECT file_path FROM client_documents WHERE id=$1 AND client_id=$2',
+      [documentId, clientId]
+    );
+    
+    if (docResult.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Document not found' });
+    }
+    
+    const filePath = docResult.rows[0].file_path;
+    
+    // Delete from database
+    await pool.query('DELETE FROM client_documents WHERE id=$1', [documentId]);
+    
+    // Delete physical file
+    try {
+      fs.unlinkSync(filePath);
+    } catch (e) {
+      console.error('Error deleting physical file:', e);
+      // Continue anyway - database record is deleted
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error deleting document:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ===========================
+// CLIENT NOTES ENDPOINTS
+// ===========================
+
+// Get all notes for a client
+app.get('/advisor/clients/:clientId/notes', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Check if table exists (backwards compatibility)
+    const tableCheck = await pool.query(
+      `SELECT table_name FROM information_schema.tables 
+       WHERE table_schema = 'public' AND table_name = 'client_notes'`
+    );
+    
+    if (tableCheck.rowCount === 0) {
+      return res.json({ ok: true, notes: [] });
+    }
+    
+    // Get notes with advisor info
+    const result = await pool.query(`
+      SELECT 
+        cn.id,
+        cn.note,
+        cn.created_at,
+        cn.updated_at,
+        u.name as advisor_name
+      FROM client_notes cn
+      LEFT JOIN users u ON cn.advisor_id = u.id
+      WHERE cn.client_id = $1
+      ORDER BY cn.created_at DESC
+    `, [clientId]);
+    
+    res.json({ ok: true, notes: result.rows });
+  } catch (e) {
+    console.error('Error fetching notes:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Create a new note for a client
+app.post('/advisor/clients/:clientId/notes', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const { note } = req.body;
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    if (!note || !note.trim()) {
+      return res.status(400).json({ ok: false, error: 'Note content is required' });
+    }
+    
+    // Insert note
+    const result = await pool.query(`
+      INSERT INTO client_notes (client_id, advisor_id, note)
+      VALUES ($1, $2, $3)
+      RETURNING id, note, created_at, updated_at
+    `, [clientId, req.user.id, note.trim()]);
+    
+    // Get advisor name for response
+    const userResult = await pool.query('SELECT name FROM users WHERE id = $1', [req.user.id]);
+    const noteWithAdvisor = {
+      ...result.rows[0],
+      advisor_name: userResult.rows[0]?.name
+    };
+    
+    res.json({ ok: true, note: noteWithAdvisor });
+  } catch (e) {
+    console.error('Error creating note:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Delete a note
+app.delete('/advisor/clients/:clientId/notes/:noteId', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const noteId = Number(req.params.noteId);
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Delete note (only if it belongs to this advisor or if admin)
+    const result = await pool.query(
+      'DELETE FROM client_notes WHERE id=$1 AND client_id=$2 AND advisor_id=$3',
+      [noteId, clientId, req.user.id]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Note not found or access denied' });
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error deleting note:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ===========================
+// PROPOSAL TRACKING ENDPOINTS
+// ===========================
+
+// Get all proposals for a client
+app.get('/advisor/clients/:clientId/proposals', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Check if table exists (backwards compatibility)
+    const tableCheck = await pool.query(
+      `SELECT table_name FROM information_schema.tables 
+       WHERE table_schema = 'public' AND table_name = 'client_proposals'`
+    );
+    
+    if (tableCheck.rowCount === 0) {
+      return res.json({ ok: true, proposals: [] });
+    }
+    
+    // Get proposals with analytics summary
+    const result = await pool.query(`
+      SELECT 
+        cp.*,
+        COUNT(DISTINCT CASE WHEN pa.event_type = 'proposal_view' THEN pa.id END) as proposal_views,
+        COUNT(DISTINCT CASE WHEN pa.event_type = 'agreement_view' THEN pa.id END) as agreement_views,
+        COUNT(DISTINCT CASE WHEN pa.event_type = 'download_click' THEN pa.id END) as download_clicks,
+        MAX(pa.created_at) as last_viewed_at
+      FROM client_proposals cp
+      LEFT JOIN proposal_analytics pa ON cp.id = pa.proposal_id
+      WHERE cp.client_id = $1
+      GROUP BY cp.id
+      ORDER BY cp.created_at DESC
+    `, [clientId]);
+    
+    res.json({ ok: true, proposals: result.rows });
+  } catch (e) {
+    console.error('Error fetching proposals:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Create a new proposal for a client
+app.post('/advisor/clients/:clientId/proposals', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const { title, description, proposal_type, proposal_url, status } = req.body;
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Validate required fields
+    if (!title || !proposal_url) {
+      return res.status(400).json({ ok: false, error: 'Title and proposal URL are required' });
+    }
+    
+    // Insert proposal
+    const result = await pool.query(`
+      INSERT INTO client_proposals 
+        (client_id, advisor_id, title, description, proposal_type, proposal_url, status, sent_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *
+    `, [
+      clientId, 
+      req.user.id, 
+      title, 
+      description || null, 
+      proposal_type || 'proposal',
+      proposal_url,
+      status || 'draft',
+      (status === 'sent' ? new Date() : null)
+    ]);
+    
+    res.json({ ok: true, proposal: result.rows[0] });
+  } catch (e) {
+    console.error('Error creating proposal:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update a proposal
+app.put('/advisor/clients/:clientId/proposals/:proposalId', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const proposalId = Number(req.params.proposalId);
+    const { title, description, proposal_type, proposal_url, status } = req.body;
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Build update query dynamically
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+    
+    if (title !== undefined) {
+      updates.push(`title = $${paramCount++}`);
+      values.push(title);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramCount++}`);
+      values.push(description);
+    }
+    if (proposal_type !== undefined) {
+      updates.push(`proposal_type = $${paramCount++}`);
+      values.push(proposal_type);
+    }
+    if (proposal_url !== undefined) {
+      updates.push(`proposal_url = $${paramCount++}`);
+      values.push(proposal_url);
+    }
+    if (status !== undefined) {
+      updates.push(`status = $${paramCount++}`);
+      values.push(status);
+      
+      // If status is being changed to 'sent', set sent_at
+      if (status === 'sent') {
+        updates.push(`sent_at = $${paramCount++}`);
+        values.push(new Date());
+      }
+    }
+    
+    updates.push(`updated_at = $${paramCount++}`);
+    values.push(new Date());
+    
+    values.push(proposalId, clientId);
+    
+    const result = await pool.query(`
+      UPDATE client_proposals 
+      SET ${updates.join(', ')}
+      WHERE id = $${paramCount++} AND client_id = $${paramCount++}
+      RETURNING *
+    `, values);
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Proposal not found' });
+    }
+    
+    res.json({ ok: true, proposal: result.rows[0] });
+  } catch (e) {
+    console.error('Error updating proposal:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Delete a proposal
+app.delete('/advisor/clients/:clientId/proposals/:proposalId', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const proposalId = Number(req.params.proposalId);
+    
+    // Verify advisor has access
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Delete proposal (analytics will cascade delete)
+    const result = await pool.query(
+      'DELETE FROM client_proposals WHERE id=$1 AND client_id=$2',
+      [proposalId, clientId]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Proposal not found' });
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error deleting proposal:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get detailed analytics for a proposal
+app.get('/advisor/proposals/:proposalId/analytics', auth('advisor'), async (req, res) => {
+  try {
+    const proposalId = Number(req.params.proposalId);
+    
+    // Verify advisor owns this proposal
+    const proposalCheck = await pool.query(
+      'SELECT client_id FROM client_proposals WHERE id=$1 AND advisor_id=$2',
+      [proposalId, req.user.id]
+    );
+    
+    if (proposalCheck.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Get all analytics events
+    const events = await pool.query(`
+      SELECT 
+        id,
+        event_type,
+        source_url,
+        source_ip,
+        referrer,
+        section_name,
+        created_at
+      FROM proposal_analytics
+      WHERE proposal_id = $1
+      ORDER BY created_at DESC
+      LIMIT 500
+    `, [proposalId]);
+    
+    // Get summary stats
+    const summary = await pool.query(`
+      SELECT 
+        COUNT(DISTINCT CASE WHEN event_type = 'proposal_view' THEN id END) as proposal_views,
+        COUNT(DISTINCT CASE WHEN event_type = 'agreement_view' THEN id END) as agreement_views,
+        COUNT(DISTINCT CASE WHEN event_type = 'download_click' THEN id END) as download_clicks,
+        COUNT(DISTINCT source_ip) as unique_visitors,
+        MIN(created_at) as first_viewed_at,
+        MAX(created_at) as last_viewed_at
+      FROM proposal_analytics
+      WHERE proposal_id = $1
+    `, [proposalId]);
+    
+    res.json({ 
+      ok: true, 
+      events: events.rows,
+      summary: summary.rows[0]
+    });
+  } catch (e) {
+    console.error('Error fetching analytics:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// PUBLIC ENDPOINT: Track proposal analytics (no auth required)
+app.post('/track/proposal/:proposalId', async (req, res) => {
+  try {
+    const proposalId = Number(req.params.proposalId);
+    const { event_type, section_name } = req.body;
+    
+    // Validate event type
+    const validEvents = ['proposal_view', 'agreement_view', 'download_click', 'section_view'];
+    if (!validEvents.includes(event_type)) {
+      return res.status(400).json({ ok: false, error: 'Invalid event type' });
+    }
+    
+    // Verify proposal exists
+    const proposalCheck = await pool.query(
+      'SELECT id FROM client_proposals WHERE id=$1',
+      [proposalId]
+    );
+    
+    if (proposalCheck.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Proposal not found' });
+    }
+    
+    // Get tracking information
+    const source_url = req.headers.referer || req.headers.referrer || null;
+    const source_ip = req.ip || req.connection.remoteAddress;
+    const user_agent = req.headers['user-agent'] || null;
+    const referrer = req.headers.referer || null;
+    
+    // Insert analytics event
+    await pool.query(`
+      INSERT INTO proposal_analytics 
+        (proposal_id, event_type, source_url, source_ip, user_agent, referrer, section_name)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [proposalId, event_type, source_url, source_ip, user_agent, referrer, section_name || null]);
+    
+    // Update proposal status if first view
+    if (event_type === 'proposal_view') {
+      await pool.query(`
+        UPDATE client_proposals 
+        SET status = CASE WHEN status = 'sent' THEN 'viewed' ELSE status END
+        WHERE id = $1
+      `, [proposalId]);
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Error tracking analytics:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// PUBLIC ENDPOINT: Serve proposal with tracking (proxy)
+app.get('/view/proposal/:proposalId', async (req, res) => {
+  try {
+    const proposalId = Number(req.params.proposalId);
+    
+    // Get proposal details
+    const result = await pool.query(
+      'SELECT proposal_url, title FROM client_proposals WHERE id=$1',
+      [proposalId]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).send('<h1>Proposal not found</h1>');
+    }
+    
+    const { proposal_url, title } = result.rows[0];
+    
+    // Track the view
+    const source_ip = req.ip || req.connection.remoteAddress;
+    const user_agent = req.headers['user-agent'] || null;
+    const referrer = req.headers.referer || null;
+    
+    await pool.query(`
+      INSERT INTO proposal_analytics 
+        (proposal_id, event_type, source_url, source_ip, user_agent, referrer)
+      VALUES ($1, 'proposal_view', $2, $3, $4, $5)
+    `, [proposalId, req.originalUrl, source_ip, user_agent, referrer]);
+    
+    // Update proposal status
+    await pool.query(`
+      UPDATE client_proposals 
+      SET status = CASE WHEN status = 'sent' THEN 'viewed' ELSE status END
+      WHERE id = $1
+    `, [proposalId]);
+    
+    // If it's a local file, serve it with tracking script injected
+    if (proposal_url.startsWith('/') || proposal_url.startsWith('./')) {
+      const filePath = path.join(__dirname, '..', 'web', proposal_url);
+      
+      if (fs.existsSync(filePath)) {
+        let html = fs.readFileSync(filePath, 'utf-8');
+        
+        // Inject tracking script before closing body tag
+        const trackingScript = `
+<script>
+  // Proposal Tracking Script
+  const PROPOSAL_ID = ${proposalId};
+  const API_URL = '${process.env.BACKEND_URL || 'https://nbrain-platform-backend.onrender.com'}';
+  
+  // Track agreement section view
+  function trackAgreementView() {
+    fetch(API_URL + '/track/proposal/' + PROPOSAL_ID, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_type: 'agreement_view' })
+    }).catch(e => console.log('Tracking error:', e));
+  }
+  
+  // Track download button clicks
+  function trackDownload() {
+    fetch(API_URL + '/track/proposal/' + PROPOSAL_ID, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_type: 'download_click' })
+    }).catch(e => console.log('Tracking error:', e));
+  }
+  
+  // Auto-detect and track agreement section
+  window.addEventListener('load', function() {
+    // Look for agreement/contract sections
+    const agreementElements = document.querySelectorAll('[id*="agreement"], [class*="agreement"], [id*="contract"], [class*="contract"]');
+    
+    if (agreementElements.length > 0) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            trackAgreementView();
+            observer.disconnect();
+          }
+        });
+      }, { threshold: 0.5 });
+      
+      agreementElements.forEach(el => observer.observe(el));
+    }
+    
+    // Track download buttons
+    const downloadButtons = document.querySelectorAll('[id*="download"], [class*="download"], a[download], button:contains("Download")');
+    downloadButtons.forEach(btn => {
+      btn.addEventListener('click', trackDownload);
+    });
+  });
+</script>
+`;
+        
+        html = html.replace('</body>', trackingScript + '</body>');
+        
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+      } else {
+        res.status(404).send('<h1>Proposal file not found</h1>');
+      }
+    } else {
+      // External URL - redirect
+      res.redirect(proposal_url);
+    }
+  } catch (e) {
+    console.error('Error serving proposal:', e);
+    res.status(500).send('<h1>Error loading proposal</h1>');
+  }
+});
+
+// Helper function to detect website type
+function detectWebsiteType(html) {
+  if (html.includes('e-commerce') || html.includes('cart') || html.includes('shop')) return 'e-commerce';
+  if (html.includes('blog') || html.includes('article')) return 'blog/content';
+  if (html.includes('saas') || html.includes('software')) return 'SaaS';
+  if (html.includes('portfolio') || html.includes('gallery')) return 'portfolio';
+  return 'business';
+}
+
+// Public ideation start endpoint (get initial message)
+app.get('/public-ideator/start', async (req, res) => {
+  try {
+    const welcomeMessage = "Let's see how Hyah! AI can help you. You can start with something like telling me the type of company you are, or you can tell me a specific task or give me your URL and I will crawl it and come up with some ideas....";
+    
+    res.json({ 
+      ok: true, 
+      message: welcomeMessage 
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Public ideation chat endpoint (no auth required)
+app.post('/public-ideator/chat', async (req, res) => {
+  try {
+    const { message, conversation_history = [] } = req.body;
+    
+    // Set appropriate headers for SSE
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    // Check if message contains a URL to crawl
+    // Updated regex to match various URL formats
+    const urlRegex = /(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+(?:\/[^\s]*)?)/gi;
+    const urlMatch = message.match(urlRegex);
+    let websiteContext = '';
+    
+    if (urlMatch) {
+      try {
+        // Fetch and analyze the website
+        let url = urlMatch[0];
+        
+        // Ensure URL has protocol
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        
+        console.log('Attempting to fetch URL:', url);
+        
+        try {
+          const response = await axios.get(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; HyahAIBot/1.0)'
+            },
+            timeout: 10000, // 10 second timeout
+            maxRedirects: 5
+          });
+          
+          const html = response.data;
+          // Extract text content and meta information
+          const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+          const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
+          const h1Matches = html.match(/<h1[^>]*>([^<]+)<\/h1>/gi) || [];
+          
+          websiteContext = `\n\nWebsite Analysis for ${url}:
+- Title: ${titleMatch ? titleMatch[1] : 'Not found'}
+- Description: ${descMatch ? descMatch[1] : 'Not found'}
+- Main headings: ${h1Matches.slice(0, 3).map(h => h.replace(/<[^>]+>/g, '')).join(', ')}
+- This appears to be a ${detectWebsiteType(html)} website.`;
+        } catch (axiosError) {
+          console.error('Axios error fetching URL:', url, axiosError.message);
+          console.error('Error details:', {
+            code: axiosError.code,
+            response: axiosError.response?.status,
+            message: axiosError.message
+          });
+          
+          if (axiosError.response) {
+            websiteContext = `\n\n(Unable to fetch website details - received status ${axiosError.response.status}, but I can still help based on what you tell me!)`;
+          } else if (axiosError.code === 'ECONNREFUSED' || axiosError.code === 'ENOTFOUND') {
+            websiteContext = `\n\n(The website appears to be unavailable or the URL may be incorrect. But no worries, I can still help based on what you tell me about your business!)`;
+          } else if (axiosError.code === 'ETIMEDOUT' || axiosError.code === 'ECONNABORTED') {
+            websiteContext = `\n\n(The website took too long to respond, but I can still help based on what you tell me!)`;
+          } else {
+            websiteContext = `\n\n(Unable to access the website at this time, but I can still help based on what you tell me!)`;
+          }
+        }
+      } catch (e) {
+        console.error('Error processing URL:', e);
+        websiteContext = '\n\n(Unable to process the URL, but I can still help based on what you tell me!)';
+      }
+    }
+    
+    // Prepare prior history for Gemini chat API.
+    // Requirements: first item must be a 'user' message and assistant messages
+    // should be mapped to 'model'. We also exclude any leading assistant-only
+    // messages (e.g., initial welcome messages) from history.
+    const priorHistory = Array.isArray(conversation_history) ? conversation_history : [];
+    const sanitizedHistory = [];
+    let seenFirstUser = false;
+    for (const h of priorHistory) {
+      const mappedRole = h.role === 'assistant' ? 'model' : h.role;
+      if (!seenFirstUser && mappedRole !== 'user') {
+        // Skip leading non-user messages
+        continue;
+      }
+      if (mappedRole === 'user') seenFirstUser = true;
+      sanitizedHistory.push({ role: mappedRole, parts: [{ text: h.content }] });
+    }
+
+    // Generate response using the public ideation prompt
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY, { apiVersion: 'v1' });
+    const model = genAI.getGenerativeModel({ 
+      model: process.env.GEMINI_MODEL || "gemini-2.0-flash-exp",
+      systemInstruction: PUBLIC_IDEATOR_SYSTEM_PROMPT
+    });
+    
+    const chat = model.startChat({ history: sanitizedHistory });
+
+    const prompt = message + (websiteContext || '');
+    const result = await chat.sendMessageStream(prompt);
+    
+    let fullResponse = '';
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      fullResponse += text;
+      res.write(`data: ${JSON.stringify({ chunk: text })}\n\n`);
+    }
+    
+    // Check if we should prompt for signup (use prior history + this user message)
+    const historyForDecision = [...priorHistory, { role: 'user', content: prompt }];
+    const shouldPromptSignup = checkIfReadyForSignup(historyForDecision, fullResponse);
+    
+    res.write(`data: ${JSON.stringify({ 
+      complete: true, 
+      shouldPromptSignup,
+      response: fullResponse 
+    })}\n\n`);
+    
+    res.end();
+  } catch (e) {
+    console.error('Public ideator error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+
+// Check if conversation is ready for signup prompt
+function checkIfReadyForSignup(history, latestResponse) {
+  const messageCount = history.filter(m => m.role === 'user').length;
+  
+  // Check if user has expressed strong interest or we've had enough back-and-forth
+  const interestKeywords = ['love it', 'perfect', 'exactly', 'let\'s do it', 'how do we start', 'what\'s next', 'sounds great'];
+  const hasInterest = interestKeywords.some(keyword => 
+    latestResponse.toLowerCase().includes(keyword) || 
+    history[history.length - 1]?.content?.toLowerCase().includes(keyword)
+  );
+  
+  return messageCount >= 3 || hasInterest;
+}
+
+// Public advisor request endpoint (captures leads)
+app.post('/public/advisor-request', async (req, res) => {
+  try {
+    const { name, email, company_url, time_slot } = req.body;
+    
+    if (!name || !email || !time_slot) {
+      return res.status(400).json({ ok: false, error: 'Name, email, and time slot are required' });
+    }
+    
+    // Save the request
+    await pool.query(
+      'insert into advisor_requests(name, email, company_url, time_slot) values($1,$2,$3,$4)',
+      [name, email, company_url, time_slot]
+    );
+    
+    res.json({ 
+      ok: true, 
+      message: 'Thanks! An advisor will reach out to confirm your selected time.' 
+    });
+  } catch (e) {
+    console.error('Advisor request error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Public signup endpoint (creates account from ideation chat)
+app.post('/public-ideator/signup', async (req, res) => {
+  try {
+    const { email, name, conversation_history = [] } = req.body;
+    
+    if (!email || !name) {
+      return res.status(400).json({ ok: false, error: 'Email and name are required' });
+    }
+    
+    // Check if user already exists
+    const existing = await pool.query('select id from users where email=$1 or username=$1', [email]);
+    if (existing.rowCount > 0) {
+      return res.status(400).json({ ok: false, error: 'An account with this email already exists. Please login instead.' });
+    }
+    
+    // Create user with default password
+    const defaultPassword = 'Welcome123!';
+    const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+    
+    const userResult = await pool.query(
+      'insert into users(name, email, username, password, role) values($1,$2,$3,$4,$5) returning id',
+      [name, email, email, hashedPassword, 'client']
+    );
+    
+    const userId = userResult.rows[0].id;
+    
+    // Seed default credentials for the new user
+    await seedUserCredentials(userId);
+    
+    // Create default AI Ecosystem
+    await createDefaultEcosystem(userId);
+    
+    // Create a draft project with their ideation conversation
+    if (conversation_history.length > 0) {
+      const projectName = 'AI Project Ideation - ' + new Date().toLocaleDateString();
+      await pool.query(
+        'insert into projects(client_id, name, status, chat_history) values($1,$2,$3,$4)',
+        [userId, projectName, 'Draft', JSON.stringify(conversation_history)]
+      );
+    }
+    
+    // Generate JWT token to auto-login
+    const token = jwt.sign(
+      { id: userId, role: 'client', email: email },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+    
+    res.json({ 
+      ok: true, 
+      token,
+      message: 'Welcome to Hyah! AI! Your account has been created.',
+      defaultPassword: 'You can change your password in your profile settings.'
+    });
+  } catch (e) {
+    console.error('Signup error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Public standalone signup (from pricing dialog)
+app.post('/public/signup', async (req, res) => {
+  try {
+    const { name, email, username, password, companyName, websiteUrl, phone, plan, time_slot } = req.body || {};
+    if (!name || !email || !username || !password || !time_slot) {
+      return res.status(400).json({ ok: false, error: 'Missing required fields' });
+    }
+    const exists = await pool.query('select id from users where email=$1 or username=$2', [email, username]);
+    if (exists.rowCount > 0) {
+      return res.status(400).json({ ok: false, error: 'An account with this email/username already exists' });
+    }
+    const hashed = await bcrypt.hash(password, 10);
+    const r = await pool.query(
+      'insert into users(role,name,email,username,password,company_name,website_url,phone) values($1,$2,$3,$4,$5,$6,$7,$8) returning id',
+      ['client', name, email, username, hashed, companyName || null, websiteUrl || null, phone || null]
+    );
+    const userId = r.rows[0].id;
+    await seedUserCredentials(userId);
+    
+    // Create default AI Ecosystem
+    await createDefaultEcosystem(userId);
+
+    // record desired onboarding time
+    // If there is an assigned default advisor logic elsewhere, we could place a null advisor. For now, store request with advisor_id = 0.
+    await pool.query(
+      'insert into schedule_requests(client_id, advisor_id, time_slot, meeting_description, status) values($1,$2,$3,$4,$5)',
+      [userId, 0, time_slot, `Requested during signup. Plan: ${plan || 'N/A'}`, 'pending']
+    ).catch(()=>{});
+
+    const token = jwt.sign({ id: userId, role: 'client', email }, JWT_SECRET, { expiresIn: '30d' });
+    // Queue Welcome email (uses email_templates key 'signup_welcome' via outbox metadata)
+    try {
+      const tpl = await pool.query("select id, subject, body from email_templates where key='signup_welcome' limit 1");
+      const template = tpl.rowCount > 0 ? tpl.rows[0] : null;
+      const baseUrl = req.headers.origin || '';
+      const loginUrl = baseUrl ? `${baseUrl}/login` : '/login';
+      const subject = template ? template.subject : 'Welcome to Hyah! AI – your account details';
+      const body = template ? template.body : `Hi {{name}},\n\nWelcome to Hyah! AI. Your account is ready.\n\nUsername: {{username}}\nPassword: {{password}}\nLogin: {{login_url}}\n\n— Hyah! AI Team`;
+      await pool.query(
+        'insert into email_outbox(to_user_id, to_email, subject, body, template_id, metadata) values($1,$2,$3,$4,$5,$6)',
+        [userId, email, subject, body, template ? template.id : null, { name, username, login_url: loginUrl }]
+      );
+      if (dispatchOutbox) {
+        dispatchOutbox().catch(()=>{});
+      }
+    } catch (_) { /* non-fatal */ }
+
+    res.json({ ok: true, token });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Download credential file for advisor
+app.get('/advisor/credentials/:clientId/:credId/download', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    const credentialId = Number(req.params.credId);
+    
+    // Verify advisor has access to this client
+    const access = await pool.query(
+      'select 1 from advisor_clients where advisor_id=$1 and client_id=$2',
+      [req.user.id, clientId]
+    );
+    
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Get credential file data
+    const result = await pool.query(
+      'SELECT file_data, file_name FROM credentials WHERE id = $1 AND user_id = $2 AND type = $3',
+      [credentialId, clientId, 'file']
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'File not found' });
+    }
+    
+    const { file_data, file_name } = result.rows[0];
+    
+    if (!file_data) {
+      return res.status(404).json({ ok: false, error: 'No file data available' });
+    }
+    
+    // Set appropriate headers for file download
+    res.setHeader('Content-Disposition', `attachment; filename="${file_name || 'credential-file'}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    
+    // Send the file data
+    res.send(file_data);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ============================================================================
+// CLIENT ONBOARDING SYSTEM API ENDPOINTS
+// ============================================================================
+
+// Points of Contact (Team Members)
+app.get('/client/contacts', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : Number(req.query.client_id);
+    
+    // Verify advisor has access to this client
+    if (req.user.role === 'advisor') {
+      const access = await pool.query(
+        'SELECT 1 FROM advisor_clients WHERE advisor_id=$1 AND client_id=$2',
+        [req.user.id, clientId]
+      );
+      if (access.rowCount === 0) {
+        return res.status(403).json({ ok: false, error: 'Access denied' });
+      }
+    }
+    
+    const result = await pool.query(
+      'SELECT * FROM client_contacts WHERE client_id=$1 ORDER BY id ASC',
+      [clientId]
+    );
+    res.json({ ok: true, contacts: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/client/contacts', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : req.body.client_id;
+    const { role, role_label, name, title, email, phone, best_time_to_reach, systems_managed, current_tools, years_in_role, documentation_location, notes } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO client_contacts (client_id, role, role_label, name, title, email, phone, best_time_to_reach, systems_managed, current_tools, years_in_role, documentation_location, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      [clientId, role, role_label, name, title, email, phone, best_time_to_reach, systems_managed, current_tools, years_in_role, documentation_location, notes]
+    );
+    res.json({ ok: true, contact: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.put('/client/contacts/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role, role_label, name, title, email, phone, best_time_to_reach, systems_managed, current_tools, years_in_role, documentation_location, notes } = req.body;
+    
+    const result = await pool.query(
+      `UPDATE client_contacts 
+       SET role=$1, role_label=$2, name=$3, title=$4, email=$5, phone=$6, best_time_to_reach=$7, 
+           systems_managed=$8, current_tools=$9, years_in_role=$10, documentation_location=$11, notes=$12
+       WHERE id=$13 RETURNING *`,
+      [role, role_label, name, title, email, phone, best_time_to_reach, systems_managed, current_tools, years_in_role, documentation_location, notes, id]
+    );
+    res.json({ ok: true, contact: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/client/contacts/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM client_contacts WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// API Credentials & System Access
+app.get('/client/api-credentials', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : Number(req.query.client_id);
+    
+    // Verify advisor has access to this client
+    if (req.user.role === 'advisor') {
+      const access = await pool.query(
+        'SELECT 1 FROM advisor_clients WHERE advisor_id=$1 AND client_id=$2',
+        [req.user.id, clientId]
+      );
+      if (access.rowCount === 0) {
+        return res.status(403).json({ ok: false, error: 'Access denied' });
+      }
+    }
+    
+    const result = await pool.query(
+      `SELECT * FROM client_api_credentials WHERE client_id=$1 
+       ORDER BY 
+         CASE priority 
+           WHEN 'critical' THEN 1 
+           WHEN 'high' THEN 2 
+           WHEN 'normal' THEN 3 
+           WHEN 'low' THEN 4 
+           ELSE 5 
+         END ASC, 
+         id ASC`,
+      [clientId]
+    );
+    res.json({ ok: true, credentials: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/client/api-credentials', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : req.body.client_id;
+    const { system_name, system_category, display_name, description, priority, status, credentials, credential_type, api_url, documentation_url, webhook_url, required_permissions, setup_instructions, estimated_time_minutes, notes } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO client_api_credentials (client_id, system_name, system_category, display_name, description, priority, status, credentials, credential_type, api_url, documentation_url, webhook_url, required_permissions, setup_instructions, estimated_time_minutes, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
+      [clientId, system_name, system_category, display_name, description, priority, status, credentials, credential_type, api_url, documentation_url, webhook_url, required_permissions, setup_instructions, estimated_time_minutes, notes]
+    );
+    res.json({ ok: true, credential: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.put('/client/api-credentials/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { system_name, system_category, display_name, description, priority, status, credentials, credential_type, api_url, documentation_url, webhook_url, required_permissions, setup_instructions, estimated_time_minutes, notes, completed_date, last_verified } = req.body;
+    
+    const result = await pool.query(
+      `UPDATE client_api_credentials 
+       SET system_name=$1, system_category=$2, display_name=$3, description=$4, priority=$5, status=$6, 
+           credentials=$7, credential_type=$8, api_url=$9, documentation_url=$10, webhook_url=$11, required_permissions=$12, 
+           setup_instructions=$13, estimated_time_minutes=$14, notes=$15, completed_date=$16, last_verified=$17
+       WHERE id=$18 RETURNING *`,
+      [system_name, system_category, display_name, description, priority, status, credentials, credential_type, api_url, documentation_url, webhook_url, required_permissions, setup_instructions, estimated_time_minutes, notes, completed_date, last_verified, id]
+    );
+    res.json({ ok: true, credential: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/client/api-credentials/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM client_api_credentials WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Documentation & Content
+app.get('/client/documentation', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : Number(req.query.client_id);
+    
+    // Verify advisor has access to this client
+    if (req.user.role === 'advisor') {
+      const access = await pool.query(
+        'SELECT 1 FROM advisor_clients WHERE advisor_id=$1 AND client_id=$2',
+        [req.user.id, clientId]
+      );
+      if (access.rowCount === 0) {
+        return res.status(403).json({ ok: false, error: 'Access denied' });
+      }
+    }
+    
+    const result = await pool.query(
+      'SELECT * FROM client_documentation WHERE client_id=$1 ORDER BY priority DESC, id ASC',
+      [clientId]
+    );
+    res.json({ ok: true, documentation: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/client/documentation', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : req.body.client_id;
+    const { category, title, description, priority, status, content_type, file_url, storage_location, file_count, total_size_mb, checklist_items, notes } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO client_documentation (client_id, category, title, description, priority, status, content_type, file_url, storage_location, file_count, total_size_mb, checklist_items, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      [clientId, category, title, description, priority, status, content_type, file_url, storage_location, file_count, total_size_mb, checklist_items, notes]
+    );
+    res.json({ ok: true, document: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.put('/client/documentation/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { category, title, description, priority, status, content_type, file_url, storage_location, file_count, total_size_mb, checklist_items, notes, received_date, processed_date } = req.body;
+    
+    const result = await pool.query(
+      `UPDATE client_documentation 
+       SET category=$1, title=$2, description=$3, priority=$4, status=$5, content_type=$6, 
+           file_url=$7, storage_location=$8, file_count=$9, total_size_mb=$10, checklist_items=$11, 
+           notes=$12, received_date=$13, processed_date=$14
+       WHERE id=$15 RETURNING *`,
+      [category, title, description, priority, status, content_type, file_url, storage_location, file_count, total_size_mb, checklist_items, notes, received_date, processed_date, id]
+    );
+    res.json({ ok: true, document: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/client/documentation/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM client_documentation WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Strategic Questions
+app.get('/client/questions', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : Number(req.query.client_id);
+    
+    // Verify advisor has access to this client
+    if (req.user.role === 'advisor') {
+      const access = await pool.query(
+        'SELECT 1 FROM advisor_clients WHERE advisor_id=$1 AND client_id=$2',
+        [req.user.id, clientId]
+      );
+      if (access.rowCount === 0) {
+        return res.status(403).json({ ok: false, error: 'Access denied' });
+      }
+    }
+    
+    const result = await pool.query(
+      'SELECT * FROM client_questions WHERE client_id=$1 ORDER BY category, display_order ASC',
+      [clientId]
+    );
+    res.json({ ok: true, questions: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/client/questions', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : req.body.client_id;
+    const { category, category_label, question, answer, priority, status, asked_by, answered_by, requires_followup, followup_notes, display_order, notes } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO client_questions (client_id, category, category_label, question, answer, priority, status, asked_by, answered_by, requires_followup, followup_notes, display_order, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      [clientId, category, category_label, question, answer, priority, status, asked_by, answered_by, requires_followup, followup_notes, display_order, notes]
+    );
+    res.json({ ok: true, question: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.put('/client/questions/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { category, category_label, question, answer, priority, status, asked_by, answered_by, answered_date, requires_followup, followup_notes, display_order, notes } = req.body;
+    
+    const result = await pool.query(
+      `UPDATE client_questions 
+       SET category=$1, category_label=$2, question=$3, answer=$4, priority=$5, status=$6, 
+           asked_by=$7, answered_by=$8, answered_date=$9, requires_followup=$10, followup_notes=$11, 
+           display_order=$12, notes=$13
+       WHERE id=$14 RETURNING *`,
+      [category, category_label, question, answer, priority, status, asked_by, answered_by, answered_date, requires_followup, followup_notes, display_order, notes, id]
+    );
+    res.json({ ok: true, question: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/client/questions/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM client_questions WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Timeline & Milestones
+app.get('/client/milestones', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : Number(req.query.client_id);
+    const result = await pool.query(
+      'SELECT * FROM client_milestones WHERE client_id=$1 ORDER BY display_order ASC',
+      [clientId]
+    );
+    res.json({ ok: true, milestones: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/client/milestones', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : req.body.client_id;
+    const { week_number, phase, title, description, deliverables, client_requirements, status, progress_percentage, planned_start_date, planned_end_date, assigned_to_advisor, assigned_to_client_contact, display_order, is_critical, notes } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO client_milestones (client_id, week_number, phase, title, description, deliverables, client_requirements, status, progress_percentage, planned_start_date, planned_end_date, assigned_to_advisor, assigned_to_client_contact, display_order, is_critical, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
+      [clientId, week_number, phase, title, description, deliverables, client_requirements, status, progress_percentage, planned_start_date, planned_end_date, assigned_to_advisor, assigned_to_client_contact, display_order, is_critical, notes]
+    );
+    res.json({ ok: true, milestone: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.put('/client/milestones/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { week_number, phase, title, description, deliverables, client_requirements, status, progress_percentage, planned_start_date, planned_end_date, actual_start_date, actual_end_date, assigned_to_advisor, assigned_to_client_contact, display_order, is_critical, notes, completion_notes } = req.body;
+    
+    // If marking as completed, set completed_at timestamp
+    const completed_at = status === 'completed' ? new Date() : null;
+    
+    const result = await pool.query(
+      `UPDATE client_milestones 
+       SET week_number=$1, phase=$2, title=$3, description=$4, deliverables=$5, client_requirements=$6, 
+           status=$7, progress_percentage=$8, planned_start_date=$9, planned_end_date=$10, 
+           actual_start_date=$11, actual_end_date=$12, assigned_to_advisor=$13, assigned_to_client_contact=$14, 
+           display_order=$15, is_critical=$16, notes=$17, completion_notes=$18, completed_at=$19
+       WHERE id=$20 RETURNING *`,
+      [week_number, phase, title, description, deliverables, client_requirements, status, progress_percentage, planned_start_date, planned_end_date, actual_start_date, actual_end_date, assigned_to_advisor, assigned_to_client_contact, display_order, is_critical, notes, completion_notes, completed_at, id]
+    );
+    res.json({ ok: true, milestone: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/client/milestones/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM client_milestones WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Reorder milestones
+app.post('/client/milestones/reorder', auth('advisor', 'admin'), async (req, res) => {
+  try {
+    const { milestone_ids } = req.body; // Array of milestone IDs in new order
+    
+    // Update display_order for each milestone
+    for (let i = 0; i < milestone_ids.length; i++) {
+      await pool.query(
+        'UPDATE client_milestones SET display_order=$1 WHERE id=$2',
+        [i, milestone_ids[i]]
+      );
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Success Metrics & KPIs
+app.get('/client/success-metrics', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : Number(req.query.client_id);
+    const result = await pool.query(
+      'SELECT * FROM client_success_metrics WHERE client_id=$1 ORDER BY category, display_order ASC',
+      [clientId]
+    );
+    res.json({ ok: true, metrics: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/client/success-metrics', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : req.body.client_id;
+    const { category, module, metric_name, metric_description, target_value, current_value, unit, baseline_value, measurement_frequency, status, priority, start_date, target_date, display_order, notes } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO client_success_metrics (client_id, category, module, metric_name, metric_description, target_value, current_value, unit, baseline_value, measurement_frequency, status, priority, start_date, target_date, display_order, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
+      [clientId, category, module, metric_name, metric_description, target_value, current_value, unit, baseline_value, measurement_frequency, status, priority, start_date, target_date, display_order, notes]
+    );
+    res.json({ ok: true, metric: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.put('/client/success-metrics/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { category, module, metric_name, metric_description, target_value, current_value, unit, baseline_value, measurement_frequency, status, priority, start_date, target_date, last_measured_date, display_order, notes } = req.body;
+    
+    const result = await pool.query(
+      `UPDATE client_success_metrics 
+       SET category=$1, module=$2, metric_name=$3, metric_description=$4, target_value=$5, current_value=$6, 
+           unit=$7, baseline_value=$8, measurement_frequency=$9, status=$10, priority=$11, 
+           start_date=$12, target_date=$13, last_measured_date=$14, display_order=$15, notes=$16
+       WHERE id=$17 RETURNING *`,
+      [category, module, metric_name, metric_description, target_value, current_value, unit, baseline_value, measurement_frequency, status, priority, start_date, target_date, last_measured_date, display_order, notes, id]
+    );
+    res.json({ ok: true, metric: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/client/success-metrics/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM client_success_metrics WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Metric Data Points (for tracking over time)
+app.get('/client/success-metrics/:id/data-points', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      'SELECT * FROM client_metric_data_points WHERE metric_id=$1 ORDER BY measured_date DESC',
+      [id]
+    );
+    res.json({ ok: true, data_points: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/client/success-metrics/:id/data-points', auth('advisor', 'admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { value, measured_date, notes } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO client_metric_data_points (metric_id, value, measured_date, notes, recorded_by)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [id, value, measured_date, notes, req.user.id]
+    );
+    
+    // Update the metric's current_value and last_measured_date
+    await pool.query(
+      'UPDATE client_success_metrics SET current_value=$1, last_measured_date=$2 WHERE id=$3',
+      [value, measured_date, id]
+    );
+    
+    res.json({ ok: true, data_point: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get onboarding overview/stats
+app.get('/client/onboarding-stats', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : Number(req.query.client_id);
+    
+    // Verify advisor has access to this client
+    if (req.user.role === 'advisor') {
+      const access = await pool.query(
+        'SELECT 1 FROM advisor_clients WHERE advisor_id=$1 AND client_id=$2',
+        [req.user.id, clientId]
+      );
+      if (access.rowCount === 0) {
+        return res.status(403).json({ ok: false, error: 'Access denied' });
+      }
+    }
+    
+    // Get counts and stats
+    const contacts = await pool.query('SELECT COUNT(*) as total, COUNT(CASE WHEN name IS NOT NULL AND name != \'\' THEN 1 END) as filled FROM client_contacts WHERE client_id=$1', [clientId]);
+    const credentials = await pool.query('SELECT COUNT(*) as total, COUNT(CASE WHEN status=\'completed\' THEN 1 END) as completed FROM client_api_credentials WHERE client_id=$1', [clientId]);
+    const documentation = await pool.query('SELECT COUNT(*) as total, COUNT(CASE WHEN status IN (\'received\', \'processed\') THEN 1 END) as received FROM client_documentation WHERE client_id=$1', [clientId]);
+    const questions = await pool.query('SELECT COUNT(*) as total, COUNT(CASE WHEN status=\'answered\' THEN 1 END) as answered FROM client_questions WHERE client_id=$1', [clientId]);
+    const milestones = await pool.query('SELECT COUNT(*) as total, COUNT(CASE WHEN status=\'completed\' THEN 1 END) as completed FROM client_milestones WHERE client_id=$1', [clientId]);
+    const metrics = await pool.query('SELECT COUNT(*) as total, COUNT(CASE WHEN status=\'achieved\' THEN 1 END) as achieved FROM client_success_metrics WHERE client_id=$1', [clientId]);
+    
+    res.json({
+      ok: true,
+      stats: {
+        contacts: contacts.rows[0],
+        credentials: credentials.rows[0],
+        documentation: documentation.rows[0],
+        questions: questions.rows[0],
+        milestones: milestones.rows[0],
+        metrics: metrics.rows[0]
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Check if onboarding is complete
+app.get('/client/onboarding-complete', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const clientId = req.user.role === 'client' ? req.user.id : Number(req.query.client_id);
+    
+    // Verify advisor has access to this client
+    if (req.user.role === 'advisor') {
+      const access = await pool.query(
+        'SELECT 1 FROM advisor_clients WHERE advisor_id=$1 AND client_id=$2',
+        [req.user.id, clientId]
+      );
+      if (access.rowCount === 0) {
+        return res.status(403).json({ ok: false, error: 'Access denied' });
+      }
+    }
+    
+    const result = await pool.query(
+      'SELECT onboarding_completed, onboarding_completed_at FROM users WHERE id=$1',
+      [clientId]
+    );
+    res.json({ 
+      ok: true, 
+      onboarding_completed: result.rows[0]?.onboarding_completed || false,
+      completed_at: result.rows[0]?.onboarding_completed_at
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Mark onboarding as complete (advisor only)
+app.post('/client/onboarding-complete', auth('advisor', 'admin'), async (req, res) => {
+  try {
+    const { client_id } = req.body;
+    await pool.query(
+      'UPDATE users SET onboarding_completed=true, onboarding_completed_at=NOW(), onboarding_completed_by=$1 WHERE id=$2',
+      [req.user.id, client_id]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Unmark onboarding as complete (advisor only)
+app.post('/client/onboarding-incomplete', auth('advisor', 'admin'), async (req, res) => {
+  try {
+    const { client_id } = req.body;
+    await pool.query(
+      'UPDATE users SET onboarding_completed=false, onboarding_completed_at=NULL, onboarding_completed_by=NULL WHERE id=$1',
+      [client_id]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ============================================================================
+// END CLIENT ONBOARDING SYSTEM API ENDPOINTS
+// ============================================================================
+
+const port = process.env.PORT || 8080;
+
+// Start listening IMMEDIATELY (critical for Render health checks)
+console.log('🔵 Starting server initialization...');
+console.log('🔵 Port:', port);
+console.log('🔵 Database URL configured:', !!process.env.DATABASE_URL);
+
+const server = app.listen(port, '0.0.0.0', () => {
+  console.log('🚀 Backend listening on 0.0.0.0:' + port);
+  console.log('✅ Server started successfully - READY FOR HEALTH CHECKS');
+  console.log('🌐 Server is accessible from outside the container');
+  
+  // Don't wait for database at all - do it completely async
+  setImmediate(() => {
+    console.log('📊 Starting background database setup...');
+    
+    const schemaTimeout = setTimeout(() => {
+      console.warn('⚠️  Schema setup taking >10s - this is OK, server is still running');
+    }, 10000);
+    
+    ensureSchema()
+      .then(() => {
+        clearTimeout(schemaTimeout);
+        console.log('✅ Database schema verified');
+        probeStreamingSupport().catch(() => {});
+      })
+      .catch((e) => {
+        clearTimeout(schemaTimeout);
+        console.error('❌ Schema setup failed:', e.message);
+        console.error('⚠️  Server running WITHOUT database');
+      });
+  });
+});
+
+server.on('listening', () => {
+  console.log('🎧 Server is LISTENING and READY');
+});
+
+server.on('error', (err) => {
+  console.error('💥 Server error:', err);
+  if (err.code === 'EADDRINUSE') {
+    console.error('❌ Port', port, 'is already in use!');
+  }
+});
+
+// Ensure server doesn't exit on uncaught errors
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught Exception:', err);
+  console.error('Server will continue running...');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('Server will continue running...');
+});
+
+app.delete('/client/projects/:id', auth('client'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    const r = await pool.query('delete from projects where id=$1 and client_id=$2 returning id', [projectId, req.user.id]);
+    if (r.rowCount === 0) return res.status(404).json({ ok: false, error: 'Project not found' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Advisor delete project (must have access to client's project)
+app.delete('/advisor/projects/:id', auth('advisor'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    const access = await pool.query(
+      `delete from projects p using advisor_clients ac
+       where p.id=$1 and ac.client_id=p.client_id and ac.advisor_id=$2 returning p.id`,
+      [projectId, req.user.id]
+    );
+    if (access.rowCount === 0) return res.status(404).json({ ok: false, error: 'Project not found or access denied' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Storage config for multer (local disk MVP)
+const uploadRoot = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadRoot)) fs.mkdirSync(uploadRoot);
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const projectId = String(req.params.id || req.params.projectId || 'general');
+    const dir = path.join(uploadRoot, projectId);
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const stamp = Date.now();
+    const safe = file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    cb(null, `${stamp}__${safe}`);
+  }
+});
+const upload = multer({ storage });
+// Serve uploaded assets (e.g., webinar images)
+app.use('/uploads', express.static(uploadRoot));
+
+// ====================
+// Stage Change Approval Endpoints (must be after upload middleware is defined)
+// ====================
+
+// Create a stage change request (advisor only)
+app.post('/advisor/projects/:projectId/stage-change-request', auth('advisor'), upload.single('attachment'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    const { from_stage, to_stage, message } = req.body || {};
+    
+    if (!from_stage || !to_stage) {
+      return res.status(400).json({ ok: false, error: 'from_stage and to_stage are required' });
+    }
+    
+    // Verify advisor has access to this project
+    if (!(await ensureAdvisorAccess(projectId, req.user.id))) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    let attachmentFileId = null;
+    
+    // Handle file upload if present
+    if (req.file) {
+      const fileResult = await pool.query(
+        `insert into project_files(project_id, user_id, filename, originalname, mimetype, size, advisor_only) 
+         values($1, $2, $3, $4, $5, $6, false) returning id`,
+        [projectId, req.user.id, req.file.filename, req.file.originalname, req.file.mimetype, req.file.size]
+      );
+      attachmentFileId = fileResult.rows[0].id;
+    }
+    
+    // Create the stage change request
+    const result = await pool.query(
+      `insert into stage_change_approvals(project_id, advisor_id, from_stage, to_stage, message, attachment_file_id, status)
+       values($1, $2, $3, $4, $5, $6, 'pending') returning id`,
+      [projectId, req.user.id, from_stage, to_stage, message || '', attachmentFileId]
+    );
+    
+    const approvalId = result.rows[0].id;
+    
+    // Add a message to the project communication thread
+    const notificationMsg = `Stage Change Request: ${from_stage} → ${to_stage}\n\n${message || 'Please review and approve this stage change.'}\n\n[Approval Required]`;
+    await pool.query(
+      'insert into project_messages(project_id, user_id, content) values($1, $2, $3)',
+      [projectId, req.user.id, notificationMsg]
+    );
+    
+    res.json({ ok: true, approvalId });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get pending stage change requests for a project
+app.get('/projects/:projectId/stage-change-requests', auth(), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    
+    // Verify access
+    if (req.user.role === 'advisor') {
+      if (!(await ensureAdvisorAccess(projectId, req.user.id))) {
+        return res.status(403).json({ ok: false, error: 'Access denied' });
+      }
+    } else if (req.user.role === 'client') {
+      if (!(await ensureClientOwns(projectId, req.user.id))) {
+        return res.status(403).json({ ok: false, error: 'Access denied' });
+      }
+    }
+    
+    const result = await pool.query(
+      `select sca.*, u.name as advisor_name, pf.originalname as attachment_name, pf.id as attachment_id
+       from stage_change_approvals sca
+       join users u on sca.advisor_id = u.id
+       left join project_files pf on sca.attachment_file_id = pf.id
+       where sca.project_id = $1 and sca.status = 'pending'
+       order by sca.created_at desc`,
+      [projectId]
+    );
+    
+    res.json({ ok: true, requests: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Approve a stage change request (client only)
+app.post('/client/projects/:projectId/stage-change-requests/:approvalId/approve', auth('client'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    const approvalId = Number(req.params.approvalId);
+    
+    // Verify client owns this project
+    if (!(await ensureClientOwns(projectId, req.user.id))) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Get the approval request
+    const approval = await pool.query(
+      `select * from stage_change_approvals where id = $1 and project_id = $2 and status = 'pending'`,
+      [approvalId, projectId]
+    );
+    
+    if (approval.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Approval request not found or already processed' });
+    }
+    
+    const { to_stage } = approval.rows[0];
+    
+    // Update the approval status
+    await pool.query(
+      `update stage_change_approvals set status = 'approved', approved_at = now() where id = $1`,
+      [approvalId]
+    );
+    
+    // Update the project stage
+    await pool.query(
+      `update projects set project_stage = $1 where id = $2`,
+      [to_stage, projectId]
+    );
+    
+    // Add a confirmation message
+    await pool.query(
+      'insert into project_messages(project_id, user_id, content) values($1, $2, $3)',
+      [projectId, req.user.id, `Stage change approved. Project is now in ${to_stage} phase.`]
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Reject a stage change request (client only)
+app.post('/client/projects/:projectId/stage-change-requests/:approvalId/reject', auth('client'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    const approvalId = Number(req.params.approvalId);
+    const { reason } = req.body || {};
+    
+    // Verify client owns this project
+    if (!(await ensureClientOwns(projectId, req.user.id))) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    // Update the approval status
+    const result = await pool.query(
+      `update stage_change_approvals set status = 'rejected', rejected_at = now() 
+       where id = $1 and project_id = $2 and status = 'pending' returning *`,
+      [approvalId, projectId]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Approval request not found or already processed' });
+    }
+    
+    // Add a message
+    const msg = reason ? `Stage change rejected. Reason: ${reason}` : 'Stage change rejected.';
+    await pool.query(
+      'insert into project_messages(project_id, user_id, content) values($1, $2, $3)',
+      [projectId, req.user.id, msg]
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ====================
+// End Stage Change Approval Endpoints
+// ====================
+
+// Access guard helpers
+async function ensureAdvisorAccess(projectId, advisorId) {
+  const access = await pool.query(
+    `select 1 from projects p join advisor_clients ac on p.client_id=ac.client_id where p.id=$1 and ac.advisor_id=$2`,
+    [projectId, advisorId]
+  );
+  return access.rowCount > 0;
+}
+async function ensureClientOwns(projectId, clientId) {
+  const r = await pool.query('select 1 from projects where id=$1 and client_id=$2', [projectId, clientId]);
+  return r.rowCount > 0;
+}
+
+// Helper: Summarize project docs for model context (text-like files only, truncated)
+function loadProjectDocSummaries(projectId, maxBytes = 40000) {
+  const dir = path.join(uploadRoot, String(projectId));
+  const summaries = [];
+  if (!fs.existsSync(dir)) return summaries;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const ent of entries) {
+    if (!ent.isFile()) continue;
+    const filePath = path.join(dir, ent.name);
+    const ext = (ent.name.split('.').pop() || '').toLowerCase();
+    const textLike = ['txt','md','markdown','json','csv','ts','tsx','js','jsx','yml','yaml','ini','xml','html'];
+    if (!textLike.includes(ext)) {
+      summaries.push({ filename: ent.name, note: 'Binary or non-text file, included in package but not analyzed.' });
+      continue;
+    }
+    try {
+      const buf = fs.readFileSync(filePath);
+      const slice = buf.slice(0, maxBytes).toString('utf8');
+      summaries.push({ filename: ent.name, sample: slice });
+    } catch {
+      summaries.push({ filename: ent.name, note: 'Failed to read file contents.' });
+    }
+  }
+  return summaries;
+}
+
+// Helper: Build prompt for Dev Package generation
+function buildDevPackagePrompt(idea, docsSummaries) {
+  const { title, summary, steps, agent_stack, client_requirements, security_considerations, future_enhancements } = idea || {};
+  const docsSection = docsSummaries && docsSummaries.length
+    ? `PROJECT DOCS (samples/truncated):\n${docsSummaries.map(d => `- ${d.filename}: ${d.sample ? d.sample.substring(0, 2000) : d.note || ''}`).join('\n')}`
+    : 'No project documents uploaded yet.';
+  return `You are an elite Staff Engineer. Generate a complete, production-grade, "Cursor-ready" development package as a ZIP composed ONLY of project-unique Markdown files derived from the specification and summarized docs below. Do NOT include any example/baseline templates or raw uploaded documents in the package — generate project-specific content only.
+
+STRICT OUTPUT FORMAT:
+Return ONLY a JSON object (no prose) with the shape:
+{
+  "files": [
+    { "path": "README.md", "content": "..." },
+    { "path": "ARCHITECTURE.md", "content": "..." },
+    { "path": "SYSTEM_OVERVIEW.md", "content": "..." },
+    { "path": "IMPLEMENTATION_PLAN.md", "content": "..." },
+    { "path": "API_SPEC.md", "content": "..." },
+    { "path": "DATA_MODEL.md", "content": "..." },
+    { "path": "MIGRATIONS.md", "content": "..." },
+    { "path": "SECURITY.md", "content": "..." },
+    { "path": "OBSERVABILITY.md", "content": "..." },
+    { "path": "DEPLOYMENT.md", "content": "..." },
+    { "path": "RUNBOOK.md", "content": "..." },
+    { "path": "TEST_STRATEGY.md", "content": "..." },
+    { "path": "CONFIGURATION.md", "content": "..." },
+    { "path": "CURSOR_OPENING_PROMPT.md", "content": "..." }
+  ]
+}
+
+DEPTH AND TECHNICALITY REQUIREMENTS:
+- Expand beyond UI-visible details. Infer and elaborate realistic, detailed architecture from the specification.
+- Include textual component and sequence diagrams (use Mermaid where useful) that explain data and control flow between services/components.
+- API_SPEC: list endpoints with method, path, auth, request/response JSON schemas, error codes, idempotency, and pagination.
+- DATA_MODEL: provide normalized relational schema with keys, indexes, and example DDL.
+- MIGRATIONS: ordered plan for evolving the schema from current to target, with safe rollout notes.
+- SECURITY: RBAC, authN/Z, secrets, least-privilege, data retention, PII handling.
+- OBSERVABILITY: logging, metrics, traces; critical SLOs, dashboards, and alerts.
+- DEPLOYMENT: step-by-step Render setup (services, env vars, build/start), and rollbacks.
+- RUNBOOK: operational procedures, common incidents, investigation steps, and on-call tips.
+- CONFIGURATION: explicit environment variable matrix (name, purpose, default, required), and config validation strategy.
+
+CONSTRAINTS:
+- The package MUST NOT embed raw user documents or generic templates. Only project-specific, uniquely generated files.
+- Use the stack Express + Next.js + PostgreSQL + JWT as the default integration context unless the spec overrides.
+- Write in clear, skimmable sections with headings, lists, and tables.
+
+PROJECT SPECIFICATION:
+Title: ${title || ''}
+Executive Summary: ${summary || ''}
+Implementation Steps: ${(steps || []).join(' | ')}
+Technical Stack (agent_stack JSON): ${JSON.stringify(agent_stack || {}, null, 2)}
+Client Requirements: ${(client_requirements || []).join(' | ')}
+Security Considerations: ${Array.isArray(security_considerations) ? security_considerations.join(' | ') : JSON.stringify(security_considerations || {})}
+Enhancements: ${Array.isArray(future_enhancements) ? future_enhancements.join(' | ') : JSON.stringify(future_enhancements || {})}
+
+${docsSection}`;
+}
+
+// Fallback: build a high-quality dev package if model output isn't strict JSON
+function buildFallbackFiles(idea, docSummaries) {
+  const title = (idea && idea.title) || 'Project'
+  const summary = (idea && idea.summary) || ''
+  const steps = Array.isArray(idea?.steps) ? idea.steps : []
+  const stack = idea?.agent_stack || {}
+  const reqs = Array.isArray(idea?.client_requirements) ? idea.client_requirements : []
+  const security = Array.isArray(idea?.security_considerations) ? idea.security_considerations : []
+  const enh = Array.isArray(idea?.future_enhancements) ? idea.future_enhancements : []
+
+  const md = (s) => (typeof s === 'string' ? s : JSON.stringify(s, null, 2))
+  const bullets = (arr) => (arr || []).map(x => `- ${typeof x === 'string' ? x : md(x)}`).join('\n')
+
+  const README = `# ${title} – Development Package\n\n${summary}\n\nThis package contains project-specific technical documentation to accelerate implementation. Start with ARCHITECTURE.md and IMPLEMENTATION_PLAN.md.\n`
+
+  const ARCHITECTURE = `# Architecture\n\n## System Context\n- Frontend: Next.js (App Router)\n- Backend: Express.js\n- Database: PostgreSQL\n- Auth: JWT (RBAC: admin, advisor, client)\n\n## Components\n- API Server: request handling, RBAC middleware, feature modules (ideas, projects, files).\n- Web App: advisor dashboard, client portal, authentication.\n- Database: normalized relational schema, migrations.\n\n## Sequence (High-Level)\n~~~mermaid\nsequenceDiagram\n  participant Web as Web (Next.js)\n  participant API as API (Express)\n  participant DB as Postgres\n  Web->>API: Authenticated request (Bearer JWT)\n  API->>API: RBAC check (role + ownership)\n  API->>DB: Parameterized SQL query\n  DB-->>API: Rows\n  API-->>Web: JSON response\n~~~\n`
+
+  const IMPLEMENTATION_PLAN = `# Implementation Plan\n\n## Overview\n${summary}\n\n## Steps\n${steps.map((s, i) => `### ${i + 1}. ${typeof s === 'string' ? s : md(s)}`).join('\n')}\n\n## Technical Stack\n${md(stack)}\n\n## Client Requirements\n${bullets(reqs)}\n`
+
+  const API_SPEC = `# API Spec\n\n- Auth: Bearer JWT (Authorization: Bearer <token>)\n- Content-Type: application/json\n\n## Endpoints (examples)\n- GET /me – returns user profile\n- GET /projects/:id/files – list files (RBAC-aware)\n- POST /advisor/projects/:projectId/dev-package – generate package (advisor)\n\nFor each endpoint: include request parameters, response schema, and error codes.\n`
+
+  const DATA_MODEL = `# Data Model\n\n## Entities\n- users(id PK, role, name, email, username, password, company_name, website_url, phone)\n- advisor_clients(advisor_id FK->users, client_id FK->users, PK(advisor_id, client_id))\n- projects(id PK, client_id FK->users, name, status, eta, chat_history)\n- agent_ideas(id PK, project_id FK->projects, title, summary, steps jsonb, agent_stack jsonb, ...)\n- project_messages(id PK, project_id FK->projects, user_id FK->users, content, created_at)\n- project_files(id PK, project_id FK->projects, user_id FK->users, filename, originalname, mimetype, size, advisor_only, created_at)\n\n## Example DDL (excerpt)\n~~~sql\ncreate table if not exists projects(\n  id serial primary key,\n  client_id int not null references users(id) on delete cascade,\n  name text not null,\n  status text not null,\n  eta text,\n  created_at timestamptz default now()\n);\n~~~\n`
+
+  const MIGRATIONS = `# Migrations\n\n1. Add advisor_only to project_files (if missing)\n2. Add chat_history to projects (if missing)\n3. Create indexes on projects(status), credentials(user_id)\n\nEach migration should be idempotent and backward compatible.\n`
+
+  const SECURITY = `# Security\n\n${bullets(security.length ? security : [
+    'TLS in transit; managed encryption at rest.',
+    'JWT-based auth with strict RBAC (admin/advisor/client).',
+    'Parameterized SQL queries; no dynamic SQL.',
+    'Rotate secrets; store only via environment variables.',
+  ])}\n`
+
+  const OBSERVABILITY = `# Observability\n\n## Metrics\n- Request rate, error rate, latency (p50/p95)\n- DB query timings\n\n## Logs\n- Structured JSON logs with request id\n\n## Tracing\n- Trace API handlers and DB calls\n`
+
+  const DEPLOYMENT = `# Deployment (Render)\n\n- Backend: Node.js service, build: npm ci; start: node server.js\n- Frontend: Next.js static or SSR service\n- Env Vars: see CONFIGURATION.md\n- Healthcheck: GET /health\n`
+
+  const RUNBOOK = `# Runbook\n\n## Common Incidents\n- 401/403: verify JWT and role mapping\n- DB connection errors: check DATABASE_URL and SSL flags\n\n## Operational Tasks\n- Rotate JWT_SECRET quarterly\n- Review indices monthly\n`
+
+  const TEST_STRATEGY = `# Test Strategy\n\n- Unit: RBAC middleware, validators\n- Integration: endpoints with seeded DB\n- E2E: advisor and client critical flows\n`
+
+  const CONFIGURATION = `# Configuration\n\n| Name | Description | Required | Default |\n|------|-------------|----------|---------|\n| JWT_SECRET | JWT signing secret | yes | |\n| DATABASE_URL | Postgres connection string | yes | |\n| DATABASE_SSL | Enable SSL (true/false) | no | false |\n| GEMINI_API_KEY | Model API key | yes | |\n| GEMINI_MODEL | Model name | no | gemini-2.5-pro |\n`
+
+  const CURSOR_PROMPT = `# Cursor Opening Prompt\n\nYou are working on ${title}. Follow IMPLEMENTATION_PLAN.md, consult ARCHITECTURE.md, and use API_SPEC.md and DATA_MODEL.md to build endpoints and schema.\n`
+
+  return [
+    { path: 'README.md', content: README },
+    { path: 'ARCHITECTURE.md', content: ARCHITECTURE },
+    { path: 'SYSTEM_OVERVIEW.md', content: ARCHITECTURE },
+    { path: 'IMPLEMENTATION_PLAN.md', content: IMPLEMENTATION_PLAN },
+    { path: 'API_SPEC.md', content: API_SPEC },
+    { path: 'DATA_MODEL.md', content: DATA_MODEL },
+    { path: 'MIGRATIONS.md', content: MIGRATIONS },
+    { path: 'SECURITY.md', content: SECURITY },
+    { path: 'OBSERVABILITY.md', content: OBSERVABILITY },
+    { path: 'DEPLOYMENT.md', content: DEPLOYMENT },
+    { path: 'RUNBOOK.md', content: RUNBOOK },
+    { path: 'TEST_STRATEGY.md', content: TEST_STRATEGY },
+    { path: 'CONFIGURATION.md', content: CONFIGURATION },
+    { path: 'CURSOR_OPENING_PROMPT.md', content: CURSOR_PROMPT },
+  ]
+}
+
+// Advisor-only: Generate Dev Package ZIP and attach as advisor-only project file
+app.post('/advisor/projects/:projectId/dev-package', auth('advisor'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    if (!projectId) return res.status(400).json({ ok: false, error: 'Invalid project id' });
+    // Access check
+    if (!(await ensureAdvisorAccess(projectId, req.user.id))) return res.status(403).json({ ok: false, error: 'Access denied' });
+
+    await ensureSchema();
+
+    // Load latest idea for the project
+    const ir = await pool.query(
+      `select * from agent_ideas where project_id=$1 order by created_at desc limit 1`,
+      [projectId]
+    );
+    const idea = ir.rowCount > 0 ? {
+      title: ir.rows[0].title,
+      summary: ir.rows[0].summary,
+      steps: ir.rows[0].steps || [],
+      agent_stack: ir.rows[0].agent_stack || {},
+      client_requirements: ir.rows[0].client_requirements || [],
+      security_considerations: ir.rows[0].security_considerations || [],
+      future_enhancements: ir.rows[0].future_enhancements || []
+    } : null;
+
+    // Summarize any uploaded docs
+    const docSummaries = loadProjectDocSummaries(projectId);
+
+    // Build prompt and call Gemini
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) return res.status(500).json({ ok: false, error: 'Missing GEMINI_API_KEY' });
+    const genAI = new GoogleGenerativeAI(apiKey, { apiVersion: 'v1' });
+    const prompt = buildDevPackagePrompt(idea, docSummaries);
+    const strict = String(process.env.GEMINI_STRICT || '').toLowerCase() === 'true' || String(process.env.GEMINI_STRICT || '') === '1';
+    const primary = process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest';
+    let jsonText = '';
+    let lastErr = null;
+    if (strict) {
+      try {
+        const mdl = genAI.getGenerativeModel({ model: primary, temperature: 0.2 });
+        const result = await generateContentWithRetries(mdl, { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 8192 } });
+        jsonText = result.response.text();
+      } catch (e) {
+        lastErr = e;
+        console.error('Dev package generation failed (strict mode)', e && (e.message || e));
+      }
+    } else {
+      const candidates = [primary, 'gemini-1.5-flash', 'gemini-1.0-pro', 'gemini-2.0-flash-exp'];
+      for (const m of candidates) {
+        try {
+          const mdl = genAI.getGenerativeModel({ model: m, temperature: 0.2 });
+          const result = await generateContentWithRetries(mdl, { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 8192 } });
+          jsonText = result.response.text();
+          if (jsonText) break;
+        } catch (e) {
+          lastErr = e;
+          // try next model
+        }
+      }
+      if (!jsonText) {
+        console.error('Dev package model generation failed; falling back', lastErr && (lastErr.message || lastErr));
+      }
+    }
+    if (jsonText.includes('```json')) {
+      jsonText = jsonText.split('```json')[1].split('```')[0].trim();
+    } else if (jsonText.includes('```')) {
+      jsonText = jsonText.split('```')[1].split('```')[0].trim();
+    }
+    let files;
+    try {
+      const parsed = JSON.parse(jsonText);
+      files = Array.isArray(parsed.files) ? parsed.files : [];
+    } catch (e) {
+      // Fallback: construct files locally so we still deliver a package
+      files = buildFallbackFiles(idea, docSummaries);
+    }
+
+    // Do not include any baseline templates; only the uniquely generated files
+
+    // Create ZIP in uploads/{projectId}
+    const projectDir = path.join(uploadRoot, String(projectId));
+    fs.mkdirSync(projectDir, { recursive: true });
+    const stamp = Date.now();
+    const zipName = `dev-package-${stamp}.zip`;
+    const zipPath = path.join(projectDir, zipName);
+
+    await new Promise((resolve, reject) => {
+      const output = fs.createWriteStream(zipPath);
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      output.on('close', resolve);
+      archive.on('error', reject);
+      archive.pipe(output);
+      // Add generated files
+      for (const f of files) {
+        const p = f.path || 'FILE.md';
+        const c = typeof f.content === 'string' ? f.content : JSON.stringify(f.content, null, 2);
+        archive.append(c, { name: p });
+      }
+      // Do NOT bundle raw uploaded documents; package must contain only generated files
+      archive.finalize();
+    });
+
+    const stats = fs.statSync(zipPath);
+    // Record in DB as advisor_only
+    const ins = await pool.query(
+      'insert into project_files(project_id, user_id, filename, originalname, mimetype, size, advisor_only) values($1,$2,$3,$4,$5,$6,$7) returning id',
+      [projectId, req.user.id, zipName, zipName, 'application/zip', stats.size, true]
+    );
+
+    res.json({ ok: true, fileId: ins.rows[0].id, filename: zipName });
+  } catch (e) {
+    console.error('Dev package error', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Advisor-only: Delete a previously generated Dev Package ZIP (advisor must have access)
+app.delete('/advisor/projects/:projectId/dev-package/:fileId', auth('advisor'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    const fileId = Number(req.params.fileId);
+    if (!projectId || !fileId) return res.status(400).json({ ok:false, error:'Invalid ids' });
+    if (!(await ensureAdvisorAccess(projectId, req.user.id))) return res.status(403).json({ ok:false, error:'Access denied' });
+
+    // Load file metadata and ensure it is advisor_only and belongs to this project
+    const r = await pool.query('select id, filename, advisor_only from project_files where id=$1 and project_id=$2', [fileId, projectId]);
+    if (r.rowCount === 0) return res.status(404).json({ ok:false, error:'File not found' });
+    const row = r.rows[0];
+    if (!row.advisor_only) return res.status(400).json({ ok:false, error:'Only advisor-only dev packages can be deleted' });
+
+    // Delete from disk
+    const filePath = path.join(uploadRoot, String(projectId), row.filename);
+    try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch {}
+
+    // Delete DB record
+    await pool.query('delete from project_files where id=$1 and project_id=$2', [fileId, projectId]);
+    res.json({ ok:true });
+  } catch (e) {
+    res.status(500).json({ ok:false, error: e.message });
+  }
+});
+
+// List project files (client or advisor)
+app.get('/projects/:id/files', auth(), async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    if (!projectId) return res.status(400).json({ ok: false, error: 'Invalid project id' });
+    if (req.user.role === 'client' && !(await ensureClientOwns(projectId, req.user.id))) return res.status(403).json({ ok: false, error: 'Access denied' });
+    if (req.user.role === 'advisor' && !(await ensureAdvisorAccess(projectId, req.user.id))) return res.status(403).json({ ok: false, error: 'Access denied' });
+    const r = await pool.query(
+      req.user.role === 'client'
+        ? 'select id, filename, originalname, mimetype, size, created_at from project_files where project_id=$1 and (advisor_only=false or advisor_only is null) order by created_at desc'
+        : 'select id, filename, originalname, mimetype, size, created_at, advisor_only from project_files where project_id=$1 order by created_at desc',
+      [projectId]
+    );
+    res.json({ ok: true, files: r.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Upload project file (client or advisor)
+app.post('/projects/:id/files', auth(), upload.single('file'), async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    if (!projectId) return res.status(400).json({ ok: false, error: 'Invalid project id' });
+    if (req.user.role === 'client' && !(await ensureClientOwns(projectId, req.user.id))) return res.status(403).json({ ok: false, error: 'Access denied' });
+    if (req.user.role === 'advisor' && !(await ensureAdvisorAccess(projectId, req.user.id))) return res.status(403).json({ ok: false, error: 'Access denied' });
+    if (!req.file) return res.status(400).json({ ok: false, error: 'Missing file' });
+    const { filename, originalname, mimetype, size } = req.file;
+    const advisorOnly = req.body && (req.body.advisor_only === 'true' || req.body.advisor_only === true);
+    await pool.query(
+      'insert into project_files(project_id, user_id, filename, originalname, mimetype, size, advisor_only) values($1,$2,$3,$4,$5,$6,$7)',
+      [projectId, req.user.id, filename, originalname, mimetype, size, advisorOnly]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Download a file
+app.get('/projects/:projectId/files/:fileId', auth(), async (req, res) => {
+  try {
+    const projectId = Number(req.params.projectId);
+    const fileId = Number(req.params.fileId);
+    if (req.user.role === 'client' && !(await ensureClientOwns(projectId, req.user.id))) return res.status(403).json({ ok: false, error: 'Access denied' });
+    if (req.user.role === 'advisor' && !(await ensureAdvisorAccess(projectId, req.user.id))) return res.status(403).json({ ok: false, error: 'Access denied' });
+    const r = await pool.query('select filename, originalname, mimetype from project_files where id=$1 and project_id=$2', [fileId, projectId]);
+    if (r.rowCount === 0) return res.status(404).json({ ok: false, error: 'File not found' });
+    const row = r.rows[0];
+    const filePath = path.join(uploadRoot, String(projectId), row.filename);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ ok: false, error: 'File missing' });
+    res.setHeader('Content-Type', row.mimetype || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${row.originalname}"`);
+    fs.createReadStream(filePath).pipe(res);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/public/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body || {};
+    if (!token || !password) return res.status(400).json({ ok:false, error:'token and password required' });
+    const t = await pool.query('select user_id from password_reset_tokens where token=$1 and expires_at > now()', [token]);
+    if (t.rowCount === 0) return res.status(400).json({ ok:false, error:'Invalid or expired token' });
+    const userId = t.rows[0].user_id;
+    const hashed = await bcrypt.hash(password, 10);
+    await pool.query('update users set password=$2 where id=$1', [userId, hashed]);
+    await pool.query('delete from password_reset_tokens where token=$1', [token]);
+    res.json({ ok:true });
+  } catch (e) { res.status(500).json({ ok:false, error:e.message }); }
+});
+
+// ===========================
+// CHANGE REQUESTS (QC) ENDPOINTS
+// ===========================
+
+// Get all change requests for current user
+app.get('/change-requests', auth(), async (req, res) => {
+  try {
+    let query, params;
+    
+    if (req.user.role === 'advisor') {
+      // Advisors see: ALL advisor change requests (shared among all advisors) + requests from their clients
+      query = `
+        SELECT DISTINCT cr.*, u.name as created_by_name, u.role as created_by_role
+        FROM change_requests cr 
+        JOIN users u ON cr.created_by = u.id 
+        LEFT JOIN projects p ON cr.project_id = p.id
+        LEFT JOIN advisor_clients ac ON p.client_id = ac.client_id
+        WHERE u.role = 'advisor' OR ac.advisor_id = $1
+        ORDER BY cr.created_at DESC
+      `;
+      params = [req.user.id];
+    } else {
+      // Clients see: their own requests + requests for their projects
+      query = `
+        SELECT cr.*, u.name as created_by_name 
+        FROM change_requests cr 
+        JOIN users u ON cr.created_by = u.id 
+        LEFT JOIN projects p ON cr.project_id = p.id 
+        WHERE cr.created_by = $1 OR p.client_id = $1
+        ORDER BY cr.created_at DESC
+      `;
+      params = [req.user.id];
+    }
+    
+    const result = await pool.query(query, params);
+    res.json({ ok: true, requests: result.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get single change request with tasks
+app.get('/change-requests/:id', auth(), async (req, res) => {
+  try {
+    const requestId = Number(req.params.id);
+    
+    const request = await pool.query(
+      'SELECT cr.*, u.name as created_by_name FROM change_requests cr JOIN users u ON cr.created_by = u.id WHERE cr.id = $1',
+      [requestId]
+    );
+    
+    if (request.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Request not found' });
+    }
+    
+    const tasks = await pool.query(
+      'SELECT * FROM change_request_tasks WHERE request_id = $1 ORDER BY sort_order, id',
+      [requestId]
+    );
+    
+    res.json({ ok: true, request: request.rows[0], tasks: tasks.rows });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Create new change request
+app.post('/change-requests', auth(), async (req, res) => {
+  try {
+    const { projectId, projectName, projectUrl } = req.body;
+    
+    if (!projectName) {
+      return res.status(400).json({ ok: false, error: 'Project name is required' });
+    }
+    
+    const result = await pool.query(
+      'INSERT INTO change_requests (created_by, project_id, project_name, project_url, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [req.user.id, projectId || null, projectName, projectUrl || null, 'open']
+    );
+    
+    res.json({ ok: true, request: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Add task to change request
+app.post('/change-requests/:id/tasks', auth(), async (req, res) => {
+  try {
+    const requestId = Number(req.params.id);
+    const { moduleName, issueDescription, fileName, fileData } = req.body;
+    
+    if (!moduleName || !issueDescription) {
+      return res.status(400).json({ ok: false, error: 'Module name and issue description are required' });
+    }
+    
+    // Handle file upload if provided
+    let filePath = null;
+    if (fileData && fileName) {
+      // Save file to uploads directory
+      const fs = require('fs');
+      const path = require('path');
+      const uploadsDir = path.join(__dirname, 'uploads', 'change-requests');
+      
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      
+      const timestamp = Date.now();
+      const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const fullFileName = `${timestamp}-${sanitizedFileName}`;
+      filePath = path.join(uploadsDir, fullFileName);
+      
+      const buffer = Buffer.from(fileData, 'base64');
+      fs.writeFileSync(filePath, buffer);
+      
+      // Store relative path
+      filePath = `uploads/change-requests/${fullFileName}`;
+    }
+    
+    const result = await pool.query(
+      'INSERT INTO change_request_tasks (request_id, module_name, issue_description, file_path, file_name) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [requestId, moduleName, issueDescription, filePath, fileName || null]
+    );
+    
+    res.json({ ok: true, task: result.rows[0] });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Delete task
+app.delete('/change-requests/:requestId/tasks/:taskId', auth(), async (req, res) => {
+  try {
+    const taskId = Number(req.params.taskId);
+    
+    await pool.query('DELETE FROM change_request_tasks WHERE id = $1', [taskId]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Mark request as complete
+app.put('/change-requests/:id/complete', auth(), async (req, res) => {
+  try {
+    const requestId = Number(req.params.id);
+    
+    await pool.query(
+      'UPDATE change_requests SET status = $1, updated_at = NOW() WHERE id = $2',
+      ['completed', requestId]
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Archive request
+app.put('/change-requests/:id/archive', auth(), async (req, res) => {
+  try {
+    const requestId = Number(req.params.id);
+    
+    await pool.query(
+      'UPDATE change_requests SET archived = TRUE, updated_at = NOW() WHERE id = $1',
+      [requestId]
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Unarchive request
+app.put('/change-requests/:id/unarchive', auth(), async (req, res) => {
+  try {
+    const requestId = Number(req.params.id);
+    
+    await pool.query(
+      'UPDATE change_requests SET archived = FALSE, updated_at = NOW() WHERE id = $1',
+      [requestId]
+    );
+    
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Serve uploaded change request files
+app.get('/change-requests/files/:filename', auth(), async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = path.join(__dirname, 'uploads', 'change-requests', filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ ok: false, error: 'File not found' });
+    }
+    
+    res.sendFile(filePath);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Generate Cursor-optimized markdown export with absolute URLs
+app.get('/change-requests/:id/export', auth(), async (req, res) => {
+  try {
+    const requestId = Number(req.params.id);
+    
+    const request = await pool.query(
+      'SELECT * FROM change_requests WHERE id = $1',
+      [requestId]
+    );
+    
+    if (request.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Request not found' });
+    }
+    
+    const tasks = await pool.query(
+      'SELECT * FROM change_request_tasks WHERE request_id = $1 ORDER BY sort_order, id',
+      [requestId]
+    );
+    
+    const req_data = request.rows[0];
+    
+    // Get base URL from request or environment
+    const baseUrl = process.env.BASE_URL || req.headers.origin || 'https://nbrain-platform-backend.onrender.com';
+    
+    // Generate markdown content optimized for Cursor
+    let markdown = `# Change Request: ${req_data.project_name}\n\n`;
+    markdown += `**Created:** ${new Date(req_data.created_at).toLocaleDateString()}\n`;
+    if (req_data.project_url) markdown += `**Project URL:** ${req_data.project_url}\n`;
+    markdown += `\n---\n\n`;
+    markdown += `## Issues to Address\n\n`;
+    markdown += `This document contains ${tasks.rowCount} change request(s) for the project "${req_data.project_name}".\n\n`;
+    markdown += `### Instructions for Cursor AI:\n`;
+    markdown += `- Each task below describes a specific issue that needs to be fixed\n`;
+    markdown += `- Screenshots are embedded below with full URLs\n`;
+    markdown += `- Make all changes according to the descriptions provided\n`;
+    markdown += `- Check off each item as you complete it\n\n`;
+    markdown += `---\n\n`;
+    
+    tasks.rows.forEach((task, index) => {
+      markdown += `## Task ${index + 1}: ${task.module_name}\n\n`;
+      markdown += `**Status:** [ ] Not Started\n\n`;
+      markdown += `**Issue Description:**\n${task.issue_description}\n\n`;
+      
+      if (task.file_path && task.file_name) {
+        // Extract just the filename from the path
+        const filename = task.file_path.split('/').pop();
+        const imageUrl = `${baseUrl}/change-requests/files/${filename}`;
+        
+        markdown += `**Reference Screenshot:**\n`;
+        markdown += `${imageUrl}\n\n`;
+        markdown += `![Screenshot](${imageUrl})\n\n`;
+        markdown += `> **Note:** Right-click the image above to open in a new tab if it doesn't display in Cursor.\n\n`;
+      }
+      
+      markdown += `**Steps to Complete:**\n`;
+      markdown += `1. [ ] Locate the module/component: \`${task.module_name}\`\n`;
+      markdown += `2. [ ] Review the issue description above\n`;
+      markdown += `3. [ ] ${task.file_path ? 'Reference the screenshot' : 'Make the necessary changes'}\n`;
+      markdown += `4. [ ] Test the changes\n`;
+      markdown += `5. [ ] Mark this task as complete below\n\n`;
+      markdown += `---\n\n`;
+    });
+    
+    markdown += `## Completion Checklist\n\n`;
+    tasks.rows.forEach((task, index) => {
+      markdown += `- [ ] Task ${index + 1}: ${task.module_name}\n`;
+    });
+    
+    markdown += `\n## Final Steps\n\n`;
+    markdown += `- [ ] All tasks completed\n`;
+    markdown += `- [ ] Changes tested\n`;
+    markdown += `- [ ] Ready for review\n`;
+    
+    res.setHeader('Content-Type', 'text/markdown');
+    res.setHeader('Content-Disposition', `attachment; filename="change-request-${requestId}.md"`);
+    res.send(markdown);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ===========================
+// AI ADOPTION ROADMAP ENDPOINTS
+// ===========================
+
+// Helper function to create default AI Ecosystem for new clients
+async function createDefaultEcosystem(userId) {
+  try {
+    // Check if ecosystem already exists
+    const existing = await pool.query(
+      'SELECT id FROM ai_roadmap_configs WHERE user_id = $1 LIMIT 1',
+      [userId]
+    );
+    
+    if (existing.rowCount > 0) {
+      console.log(`Ecosystem already exists for user ${userId}`);
+      return;
+    }
+    
+    // Create roadmap config
+    const newConfig = await pool.query(
+      'INSERT INTO ai_roadmap_configs (user_id, name, is_default) VALUES ($1, $2, true) RETURNING *',
+      [userId, 'My AI Ecosystem']
+    );
+    
+    const configId = newConfig.rows[0].id;
+    
+    // Create default category nodes matching the standard layout
+    const brainDescription = 'The Brain is your centralized AI intelligence — a smart, evolving core that powers every module within your ecosystem, both now and in the future. It acts as the AI backend that connects, coordinates, and amplifies all components of your system. The Brain is fully owned by you, continuously learning and adapting with every interaction. It\'s designed to be completely portable, allowing you to take your intelligence anywhere — seamlessly integrated within nBrain or beyond it.';
+    
+    const defaultCategories = [
+      { name: 'The Brain', x: 600, y: 350, description: brainDescription, color: '#9333EA' },
+      // Left side categories (no descriptions)
+      { name: 'Sales / Marketing', x: 150, y: 100, description: '', color: '#6B7280' },
+      { name: 'Human Resources', x: 150, y: 400, description: '', color: '#6B7280' },
+      // Right side categories (no descriptions)
+      { name: 'Company Opps', x: 1050, y: 100, description: '', color: '#6B7280' },
+      { name: 'Financial', x: 1050, y: 400, description: '', color: '#6B7280' },
+      // Bottom
+      { name: 'Other', x: 600, y: 600, description: '', color: '#6B7280' },
+    ];
+    
+    const nodeIds = {};
+    for (const cat of defaultCategories) {
+      const result = await pool.query(
+        `INSERT INTO roadmap_nodes (roadmap_config_id, node_type, title, description, position_x, position_y, category, is_category)
+         VALUES ($1, 'category', $2, $3, $4, $5, $2, true)
+         RETURNING id`,
+        [configId, cat.name, cat.description, cat.x, cat.y]
+      );
+      nodeIds[cat.name] = result.rows[0].id;
+    }
+    
+    // Create connections from The Brain to all other categories
+    const brainId = nodeIds['The Brain'];
+    for (const cat of defaultCategories) {
+      if (cat.name !== 'The Brain') {
+        await pool.query(
+          `INSERT INTO roadmap_edges (roadmap_config_id, source_node_id, target_node_id, edge_type)
+           VALUES ($1, $2, $3, 'default')`,
+          [configId, brainId, nodeIds[cat.name]]
+        );
+      }
+    }
+    
+    console.log(`Created default AI Ecosystem for user ${userId}`);
+  } catch (e) {
+    console.error('Error creating default ecosystem:', e);
+    // Non-fatal - don't throw
+  }
+}
+
+// Get or create roadmap for current user
+app.get('/roadmap', auth(), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Check if user has a roadmap config
+    let config = await pool.query(
+      'SELECT * FROM ai_roadmap_configs WHERE user_id = $1 AND is_default = true ORDER BY created_at DESC LIMIT 1',
+      [userId]
+    );
+    
+    // If no config exists, create one and auto-import projects/ideas
+    if (config.rowCount === 0) {
+      const newConfig = await pool.query(
+        'INSERT INTO ai_roadmap_configs (user_id, name, is_default) VALUES ($1, $2, true) RETURNING *',
+        [userId, 'My AI Roadmap']
+      );
+      config = newConfig;
+      
+      const configId = newConfig.rows[0].id;
+      
+      // Create default category nodes with "The Brain" in center, categories on left/right, projects beyond
+      const defaultCategories = [
+        { name: 'The Brain', x: 600, y: 350, description: 'Central AI strategy hub' },
+        // Left side categories
+        { name: 'Sales', x: 350, y: 200, description: 'Sales AI initiatives' },
+        { name: 'Marketing', x: 350, y: 350, description: 'Marketing AI initiatives' },
+        { name: 'HR', x: 350, y: 500, description: 'HR AI initiatives' },
+        // Right side categories
+        { name: 'Operations', x: 850, y: 200, description: 'Operations AI initiatives' },
+        { name: 'Finance', x: 850, y: 350, description: 'Finance AI initiatives' },
+        { name: 'Other', x: 850, y: 500, description: 'Other AI initiatives' },
+      ];
+      
+      for (const cat of defaultCategories) {
+        await pool.query(
+          `INSERT INTO roadmap_nodes (roadmap_config_id, node_type, title, description, position_x, position_y, category, is_predefined_category)
+           VALUES ($1, 'category', $2, $3, $4, $5, $2, true)`,
+          [configId, cat.name, cat.description, cat.x, cat.y]
+        );
+      }
+      
+      // Auto-import projects as nodes (positioned on left and right beyond categories)
+      const projects = await pool.query(
+        'SELECT p.id, p.name, p.status FROM projects p WHERE p.client_id = $1',
+        [userId]
+      );
+      
+      let leftY = 150;
+      let rightY = 150;
+      for (let i = 0; i < projects.rows.length; i++) {
+        const project = projects.rows[i];
+        // Alternate between left (100px) and right (1100px)
+        const xPos = i % 2 === 0 ? 100 : 1100;
+        const yPos = i % 2 === 0 ? leftY : rightY;
+        
+        await pool.query(
+          `INSERT INTO roadmap_nodes (roadmap_config_id, node_type, project_id, title, description, status, position_x, position_y)
+           VALUES ($1, 'project', $2, $3, $4, $5, $6, $7)`,
+          [configId, project.id, project.name, `Status: ${project.status}`, project.status.toLowerCase(), xPos, yPos]
+        );
+        
+        if (i % 2 === 0) leftY += 170;
+        else rightY += 170;
+      }
+      
+      // Auto-import ideas as nodes (positioned on far left and far right)
+      const ideas = await pool.query(
+        'SELECT id, title, summary, status FROM agent_ideas WHERE user_id = $1',
+        [userId]
+      );
+      
+      leftY = 150;
+      rightY = 150;
+      for (let i = 0; i < ideas.rows.length; i++) {
+        const idea = ideas.rows[i];
+        // Alternate between far left (50px) and far right (1150px)
+        const xPos = i % 2 === 0 ? 50 : 1150;
+        const yPos = i % 2 === 0 ? leftY : rightY;
+        
+        await pool.query(
+          `INSERT INTO roadmap_nodes (roadmap_config_id, node_type, idea_id, title, description, status, position_x, position_y)
+           VALUES ($1, 'idea', $2, $3, $4, 'ideation', $5, $6)`,
+          [configId, idea.id, idea.title, idea.summary || '', xPos, yPos]
+        );
+        
+        if (i % 2 === 0) leftY += 100;
+        else rightY += 100;
+      }
+    }
+    
+    const configData = config.rows[0];
+    
+    // Get all nodes for this roadmap
+    const nodes = await pool.query(
+      'SELECT * FROM roadmap_nodes WHERE roadmap_config_id = $1 ORDER BY created_at',
+      [configData.id]
+    );
+    
+    // Get all edges
+    const edges = await pool.query(
+      'SELECT * FROM roadmap_edges WHERE roadmap_config_id = $1',
+      [configData.id]
+    );
+    
+    // Get all departments
+    const departments = await pool.query(
+      'SELECT * FROM roadmap_departments WHERE roadmap_config_id = $1',
+      [configData.id]
+    );
+    
+    res.json({
+      ok: true,
+      roadmap: {
+        config: configData,
+        nodes: nodes.rows,
+        edges: edges.rows,
+        departments: departments.rows
+      }
+    });
+  } catch (e) {
+    console.error('Roadmap fetch error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Add a new node
+app.post('/roadmap/nodes', auth(), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { nodeType, title, description, status, priority, positionX, positionY, projectId, ideaId, departmentId, parentNodeId, category, customData } = req.body;
+    
+    // Get user's roadmap config
+    const config = await pool.query(
+      'SELECT id FROM ai_roadmap_configs WHERE user_id = $1 AND is_default = true LIMIT 1',
+      [userId]
+    );
+    
+    if (config.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'No roadmap found' });
+    }
+    
+    const configId = config.rows[0].id;
+    
+    const result = await pool.query(
+      `INSERT INTO roadmap_nodes 
+       (roadmap_config_id, node_type, title, description, status, priority, position_x, position_y, project_id, idea_id, department_id, parent_node_id, category, custom_data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       RETURNING *`,
+      [configId, nodeType, title, description || '', status || 'planned', priority || 'medium', positionX || 0, positionY || 0, projectId || null, ideaId || null, departmentId || null, parentNodeId || null, category || null, customData || '{}']
+    );
+    
+    res.json({ ok: true, node: result.rows[0] });
+  } catch (e) {
+    console.error('Add node error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update a node
+app.put('/roadmap/nodes/:nodeId', auth(), async (req, res) => {
+  try {
+    const nodeId = Number(req.params.nodeId);
+    const { title, description, status, priority, positionX, positionY, estimatedRoi, estimatedTimeline, customData } = req.body;
+    
+    // Build dynamic update query
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+    
+    if (title !== undefined) { updates.push(`title = $${paramCount++}`); values.push(title); }
+    if (description !== undefined) { updates.push(`description = $${paramCount++}`); values.push(description); }
+    if (status !== undefined) { updates.push(`status = $${paramCount++}`); values.push(status); }
+    if (priority !== undefined) { updates.push(`priority = $${paramCount++}`); values.push(priority); }
+    if (positionX !== undefined) { updates.push(`position_x = $${paramCount++}`); values.push(positionX); }
+    if (positionY !== undefined) { updates.push(`position_y = $${paramCount++}`); values.push(positionY); }
+    if (estimatedRoi !== undefined) { updates.push(`estimated_roi = $${paramCount++}`); values.push(estimatedRoi); }
+    if (estimatedTimeline !== undefined) { updates.push(`estimated_timeline = $${paramCount++}`); values.push(estimatedTimeline); }
+    if (customData !== undefined) { updates.push(`custom_data = $${paramCount++}`); values.push(customData); }
+    
+    updates.push(`updated_at = NOW()`);
+    values.push(nodeId);
+    
+    const query = `UPDATE roadmap_nodes SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`;
+    const result = await pool.query(query, values);
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Node not found' });
+    }
+    
+    res.json({ ok: true, node: result.rows[0] });
+  } catch (e) {
+    console.error('Update node error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Delete a node
+app.delete('/roadmap/nodes/:nodeId', auth(), async (req, res) => {
+  try {
+    const nodeId = Number(req.params.nodeId);
+    
+    await pool.query('DELETE FROM roadmap_nodes WHERE id = $1', [nodeId]);
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete node error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Add an edge (connection between nodes)
+app.post('/roadmap/edges', auth(), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sourceNodeId, targetNodeId, edgeType, label, isCritical, sourceHandle, targetHandle } = req.body;
+    
+    // Get user's roadmap config
+    const config = await pool.query(
+      'SELECT id FROM ai_roadmap_configs WHERE user_id = $1 AND is_default = true LIMIT 1',
+      [userId]
+    );
+    
+    if (config.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'No roadmap found' });
+    }
+    
+    const configId = config.rows[0].id;
+    
+    const result = await pool.query(
+      `INSERT INTO roadmap_edges (roadmap_config_id, source_node_id, target_node_id, edge_type, label, is_critical, source_handle, target_handle)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [configId, sourceNodeId, targetNodeId, edgeType || 'dependency', label || '', isCritical || false, sourceHandle || null, targetHandle || null]
+    );
+    
+    res.json({ ok: true, edge: result.rows[0] });
+  } catch (e) {
+    console.error('Add edge error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Delete an edge
+app.delete('/roadmap/edges/:edgeId', auth(), async (req, res) => {
+  try {
+    const edgeId = Number(req.params.edgeId);
+    
+    await pool.query('DELETE FROM roadmap_edges WHERE id = $1', [edgeId]);
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Delete edge error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Add a department
+app.post('/roadmap/departments', auth(), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { name, color, description, positionX, positionY } = req.body;
+    
+    // Get user's roadmap config
+    const config = await pool.query(
+      'SELECT id FROM ai_roadmap_configs WHERE user_id = $1 AND is_default = true LIMIT 1',
+      [userId]
+    );
+    
+    if (config.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'No roadmap found' });
+    }
+    
+    const configId = config.rows[0].id;
+    
+    const result = await pool.query(
+      `INSERT INTO roadmap_departments (roadmap_config_id, name, color, description, position_x, position_y)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [configId, name, color || '#3B82F6', description || '', positionX || 0, positionY || 0]
+    );
+    
+    res.json({ ok: true, department: result.rows[0] });
+  } catch (e) {
+    console.error('Add department error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update department
+app.put('/roadmap/departments/:deptId', auth(), async (req, res) => {
+  try {
+    const deptId = Number(req.params.deptId);
+    const { name, color, description, positionX, positionY, aiAdoptionScore } = req.body;
+    
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+    
+    if (name !== undefined) { updates.push(`name = $${paramCount++}`); values.push(name); }
+    if (color !== undefined) { updates.push(`color = $${paramCount++}`); values.push(color); }
+    if (description !== undefined) { updates.push(`description = $${paramCount++}`); values.push(description); }
+    if (positionX !== undefined) { updates.push(`position_x = $${paramCount++}`); values.push(positionX); }
+    if (positionY !== undefined) { updates.push(`position_y = $${paramCount++}`); values.push(positionY); }
+    if (aiAdoptionScore !== undefined) { updates.push(`ai_adoption_score = $${paramCount++}`); values.push(aiAdoptionScore); }
+    
+    values.push(deptId);
+    
+    const query = `UPDATE roadmap_departments SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`;
+    const result = await pool.query(query, values);
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'Department not found' });
+    }
+    
+    res.json({ ok: true, department: result.rows[0] });
+  } catch (e) {
+    console.error('Update department error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Bulk update node positions (for drag-and-drop)
+app.post('/roadmap/bulk-update-positions', auth(), async (req, res) => {
+  try {
+    const { nodes } = req.body;
+    
+    if (!Array.isArray(nodes)) {
+      return res.status(400).json({ ok: false, error: 'nodes must be an array' });
+    }
+    
+    // Update all nodes in a transaction
+    for (const node of nodes) {
+      if (node.id && node.positionX !== undefined && node.positionY !== undefined) {
+        await pool.query(
+          'UPDATE roadmap_nodes SET position_x = $1, position_y = $2, updated_at = NOW() WHERE id = $3',
+          [node.positionX, node.positionY, node.id]
+        );
+      }
+    }
+    
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Bulk update error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Create a snapshot
+app.post('/roadmap/snapshots', auth(), async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { notes } = req.body;
+    
+    // Get user's roadmap config
+    const config = await pool.query(
+      'SELECT id FROM ai_roadmap_configs WHERE user_id = $1 AND is_default = true LIMIT 1',
+      [userId]
+    );
+    
+    if (config.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: 'No roadmap found' });
+    }
+    
+    const configId = config.rows[0].id;
+    
+    // Get current state
+    const nodes = await pool.query('SELECT * FROM roadmap_nodes WHERE roadmap_config_id = $1', [configId]);
+    const edges = await pool.query('SELECT * FROM roadmap_edges WHERE roadmap_config_id = $1', [configId]);
+    const departments = await pool.query('SELECT * FROM roadmap_departments WHERE roadmap_config_id = $1', [configId]);
+    
+    const snapshotData = {
+      nodes: nodes.rows,
+      edges: edges.rows,
+      departments: departments.rows,
+      timestamp: new Date().toISOString()
+    };
+    
+    const result = await pool.query(
+      'INSERT INTO roadmap_snapshots (roadmap_config_id, snapshot_data, created_by, notes) VALUES ($1, $2, $3, $4) RETURNING *',
+      [configId, JSON.stringify(snapshotData), userId, notes || '']
+    );
+    
+    res.json({ ok: true, snapshot: result.rows[0] });
+  } catch (e) {
+    console.error('Snapshot creation error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get roadmap for advisor viewing a client's roadmap
+app.get('/advisor/clients/:clientId/roadmap', auth('advisor'), async (req, res) => {
+  try {
+    const clientId = Number(req.params.clientId);
+    
+    // Check if advisor has access to this client via advisor_clients table
+    const access = await pool.query(
+      'SELECT 1 FROM advisor_clients WHERE advisor_id = $1 AND client_id = $2',
+      [req.user.id, clientId]
+    );
+    
+    if (access.rowCount === 0) {
+      return res.status(403).json({ ok: false, error: 'Access denied - you are not assigned to this client' });
+    }
+    
+    // Get client's roadmap
+    const config = await pool.query(
+      'SELECT * FROM ai_roadmap_configs WHERE user_id = $1 AND is_default = true LIMIT 1',
+      [clientId]
+    );
+    
+    if (config.rowCount === 0) {
+      // No roadmap yet - create default one
+      await createDefaultEcosystem(clientId);
+      
+      // Fetch the newly created config
+      const newConfig = await pool.query(
+        'SELECT * FROM ai_roadmap_configs WHERE user_id = $1 AND is_default = true LIMIT 1',
+        [clientId]
+      );
+      
+      if (newConfig.rowCount === 0) {
+        return res.json({ ok: true, roadmap: null });
+      }
+    }
+    
+    const configData = config.rowCount > 0 ? config.rows[0] : (await pool.query('SELECT * FROM ai_roadmap_configs WHERE user_id = $1 AND is_default = true LIMIT 1', [clientId])).rows[0];
+    const nodes = await pool.query('SELECT * FROM roadmap_nodes WHERE roadmap_config_id = $1', [configData.id]);
+    const edges = await pool.query('SELECT * FROM roadmap_edges WHERE roadmap_config_id = $1', [configData.id]);
+    const departments = await pool.query('SELECT * FROM roadmap_departments WHERE roadmap_config_id = $1', [configData.id]);
+    
+    res.json({
+      ok: true,
+      roadmap: {
+        config: configData,
+        nodes: nodes.rows,
+        edges: edges.rows,
+        departments: departments.rows
+      }
+    });
+  } catch (e) {
+    console.error('Advisor roadmap fetch error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// AI-generate description for roadmap node
+app.post('/roadmap/ai-description', auth(), async (req, res) => {
+  try {
+    const { title, nodeType } = req.body;
+    
+    if (!title) {
+      return res.status(400).json({ ok: false, error: 'Title required' });
+    }
+    
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ ok: false, error: 'AI service not configured' });
+    }
+    
+    // Fetch user's company context for personalization
+    let companyContext = '';
+    try {
+      const userProfile = await pool.query(
+        'SELECT company_name, company_description FROM users WHERE id = $1',
+        [req.user.id]
+      );
+      
+      if (userProfile.rowCount > 0) {
+        const profile = userProfile.rows[0];
+        if (profile.company_name || profile.company_description) {
+          companyContext = '\n\nCOMPANY CONTEXT:\n';
+          if (profile.company_name) companyContext += `Company: ${profile.company_name}\n`;
+          if (profile.company_description) companyContext += `About: ${profile.company_description}\n`;
+          companyContext += '\nMake the description specifically relevant to this company and their business.';
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching company context:', e);
+      // Non-fatal - continue without context
+    }
+    
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.0-flash-exp' });
+    
+    const typeContext = nodeType === 'project' ? 'AI project' : nodeType === 'subcategory' ? 'business sub-category' : 'initiative';
+    const prompt = `Generate a professional 3-4 sentence description for this ${typeContext} titled "${title}". The description should explain what this ${typeContext} involves and its potential business value. Keep it concise and strategic.${companyContext}`;
+    
+    const result = await model.generateContent(prompt);
+    const description = result.response.text().trim();
+    
+    res.json({ ok: true, description });
+  } catch (e) {
+    console.error('AI description error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// One-time migration endpoint (admin only)
+app.post('/admin/run-roadmap-migration', auth('admin'), async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    const migrationFile = path.join(__dirname, 'migrations', 'create_ai_roadmap_tables.sql');
+    
+    if (!fs.existsSync(migrationFile)) {
+      return res.status(404).json({ ok: false, error: 'Migration file not found' });
+    }
+    
+    const sql = fs.readFileSync(migrationFile, 'utf8');
+    
+    // Execute migration
+    await pool.query(sql);
+    
+    // Verify tables were created
+    const result = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND (table_name LIKE 'roadmap%' OR table_name LIKE 'ai_roadmap%')
+      ORDER BY table_name
+    `);
+    
+    res.json({ 
+      ok: true, 
+      message: 'Migration completed successfully',
+      tablesCreated: result.rows.map(r => r.table_name)
+    });
+  } catch (e) {
+    console.error('Migration error:', e);
+    res.status(500).json({ ok: false, error: e.message, details: e.stack });
+  }
+});
+
+

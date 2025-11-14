@@ -1,0 +1,33 @@
+🎯 CMDR PLATFORM - CURSOR AI INSTRUCTIONS
+
+Hi! I need your help deploying and rebranding this platform.
+
+📖 READ FIRST:
+- CMDR-CURSOR-PROMPT.md (your complete instructions)
+- CMDR-MIGRATION-GUIDE.md (deployment steps)
+
+🎯 YOUR MISSION:
+1. Help me deploy this to GitHub and Render
+2. Migrate the database from nBrain
+3. Rebrand everything "nBRAIN" → "CMDR"
+4. Integrate MY existing CMDR homepage (ask me for location)
+5. Apply MY CMDR color scheme (ask me for colors)
+6. Remove ALL nBRAIN logos - use text "CMDR" only
+
+⚠️ KEY RULES:
+- DO NOT use nBRAIN homepage design
+- DO NOT keep any nBRAIN branding
+- DO ask me for CMDR brand colors before changing design
+- DO ask me for CMDR homepage location
+- DO follow CMDR-CURSOR-PROMPT.md exactly
+
+🚀 START BY:
+1. Confirming you've read CMDR-CURSOR-PROMPT.md
+2. Asking me about:
+   - GitHub repo status
+   - CMDR brand colors (primary, secondary, accent, background, text)
+   - CMDR homepage file location
+   - Whether I'm ready to begin deployment
+
+Let's build the CMDR platform! 🎯
+
