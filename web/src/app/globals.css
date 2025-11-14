@@ -8,16 +8,15 @@
   }
   
   html {
-    margin: 0 !important;
-    padding: 0 !important;
+    margin: 0;
+    padding: 0;
   }
   
   body {
-    margin: 0 !important;
-    padding: 0 !important;
+    @apply text-black antialiased;
     background-color: var(--color-bg);
-    color: black;
-    -webkit-font-smoothing: antialiased;
+    margin: 0;
+    padding: 0;
   }
 }
 
