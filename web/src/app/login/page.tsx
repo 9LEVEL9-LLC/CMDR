@@ -1,34 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ClientSignupDialog } from "@/components/ClientSignupDialog";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [signupOpen, setSignupOpen] = useState(false);
-  const [forgotMsg, setForgotMsg] = useState<string>("");
-  const [forgotOpen, setForgotOpen] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState("");
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || ""}/login`, {
+      const res = await fetch(`https://cmdr-backend.onrender.com/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Login failed");
-      // Store JWT token so subsequent requests are authenticated
       if (data.token) {
         try {
           localStorage.setItem("xsourcing_token", data.token as string);
-          // Non-HttpOnly demo cookie so you can see it in browser storage
           document.cookie = `xsourcing_token=${data.token}; Max-Age=${7 * 24 * 60 * 60}; Path=/; SameSite=Lax;`;
         } catch (_) { /* ignore */ }
       }
@@ -43,48 +36,143 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="mx-auto grid min-h-[70vh] max-w-md place-items-center px-6 py-24">
-      <div className="w-full rounded-xl border border-[var(--color-border)] bg-white p-6 shadow-card">
-        <div className="mx-auto mb-6 text-3xl font-bold text-[var(--color-primary)]">CMDR</div>
-        <h1 className="text-center text-2xl font-semibold text-[var(--color-text)]">Sign in</h1>
-        <form onSubmit={submit} className="mt-6 grid grid-cols-1 gap-3">
-          <input className="rounded-md border border-[var(--color-border)] px-3 py-2" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} />
-          <input className="rounded-md border border-[var(--color-border)] px-3 py-2" placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          {error && <div className="text-sm text-red-600">{error}</div>}
-          <button className="btn-primary">Continue</button>
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#F3F4F6',
+      padding: '2rem'
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '420px',
+        backgroundColor: 'white',
+        borderRadius: '16px',
+        padding: '3rem 2rem',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+        border: '1px solid #E5E7EB'
+      }}>
+        <div style={{
+          fontSize: '2rem',
+          fontWeight: '700',
+          color: '#123499',
+          textAlign: 'center',
+          marginBottom: '2rem'
+        }}>CMDR</div>
+        
+        <h1 style={{
+          fontSize: '1.75rem',
+          fontWeight: '600',
+          color: '#00072D',
+          textAlign: 'center',
+          marginBottom: '2rem'
+        }}>Sign in to Platform</h1>
+        
+        <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div>
+            <label style={{
+              display: 'block',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              color: '#374151',
+              marginBottom: '0.5rem'
+            }}>Username</label>
+            <input
+              style={{
+                width: '100%',
+                padding: '0.75rem 1rem',
+                fontSize: '1rem',
+                border: '2px solid #D1D5DB',
+                borderRadius: '8px',
+                outline: 'none',
+                transition: 'border-color 0.2s'
+              }}
+              placeholder="Enter username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              onFocus={(e) => e.currentTarget.style.borderColor = '#123499'}
+              onBlur={(e) => e.currentTarget.style.borderColor = '#D1D5DB'}
+            />
+          </div>
+          
+          <div>
+            <label style={{
+              display: 'block',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              color: '#374151',
+              marginBottom: '0.5rem'
+            }}>Password</label>
+            <input
+              type="password"
+              style={{
+                width: '100%',
+                padding: '0.75rem 1rem',
+                fontSize: '1rem',
+                border: '2px solid #D1D5DB',
+                borderRadius: '8px',
+                outline: 'none',
+                transition: 'border-color 0.2s'
+              }}
+              placeholder="Enter password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onFocus={(e) => e.currentTarget.style.borderColor = '#123499'}
+              onBlur={(e) => e.currentTarget.style.borderColor = '#D1D5DB'}
+            />
+          </div>
+          
+          {error && (
+            <div style={{
+              padding: '0.75rem',
+              backgroundColor: '#FEE2E2',
+              border: '1px solid #FCA5A5',
+              borderRadius: '8px',
+              color: '#DC2626',
+              fontSize: '0.875rem'
+            }}>
+              {error}
+            </div>
+          )}
+          
+          <button
+            type="submit"
+            style={{
+              width: '100%',
+              padding: '0.875rem',
+              fontSize: '1rem',
+              fontWeight: '700',
+              backgroundColor: '#123499',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              marginTop: '0.5rem',
+              transition: 'background-color 0.2s'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#0A2472'}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#123499'}
+          >
+            Continue
+          </button>
         </form>
-        <div className="mt-3 flex items-center justify-between text-sm">
-          <button className="text-[var(--color-primary)] underline" onClick={()=>{ setForgotMsg(""); setForgotEmail(""); setForgotOpen(true) }}>Forgot Password?</button>
-          <button className="text-[var(--color-primary)] underline" onClick={()=>setSignupOpen(true)}>Need an account? Click here</button>
+        
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          marginTop: '1.5rem',
+          fontSize: '0.875rem'
+        }}>
+          <a href="/reset" style={{ color: '#123499', textDecoration: 'underline' }}>
+            Forgot Password?
+          </a>
+          <a href="/" style={{ color: '#123499', textDecoration: 'underline' }}>
+            ← Back to Home
+          </a>
         </div>
       </div>
-
-      {/* Forgot Password modal */}
-      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Reset your password</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 text-sm">
-            <p className="text-[var(--color-text-muted)]">Enter your account email. We’ll send a reset link when email is configured.</p>
-            <input className="w-full rounded-md border border-[var(--color-border)] px-3 py-2" type="email" placeholder="you@company.com" value={forgotEmail} onChange={e=>setForgotEmail(e.target.value)} />
-            <div className="flex items-center gap-2">
-              <button className="btn-primary" onClick={async()=>{
-                setForgotMsg("")
-                const r = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || ""}/public/forgot-password`, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ email: forgotEmail }) }).then(r=>r.json()).catch(()=>null)
-                if (r && r.ok) setForgotMsg('If that email exists, we\'ll send reset instructions shortly.')
-                else setForgotMsg(r?.error || 'Request failed. Please try again later.')
-              }}>Send reset link</button>
-              {forgotMsg && <span className="text-xs text-[var(--color-text-muted)]">{forgotMsg}</span>}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Signup modal */}
-      <ClientSignupDialog open={signupOpen} onOpenChange={setSignupOpen} />
     </div>
   );
 }
-
 
