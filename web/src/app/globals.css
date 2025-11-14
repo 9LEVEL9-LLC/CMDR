@@ -1,21 +1,21 @@
-@import "tailwindcss/theme" layer(theme);
-@import "tailwindcss/preflight" layer(base);
-@import "tailwindcss/utilities" layer(utilities);
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @layer base {
   * {
     box-sizing: border-box;
-    margin: 0;
-    padding: 0;
   }
-
-  html, body {
+  
+  html {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  body {
     margin: 0 !important;
     padding: 0 !important;
     background-color: var(--color-bg);
-  }
-
-  body {
     color: black;
     -webkit-font-smoothing: antialiased;
   }
