@@ -1,11 +1,20 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-@layer base {
-  body { @apply text-black antialiased; background-color: var(--color-bg); margin: 0; padding: 0; }
-  html { margin: 0; padding: 0; }
-  * { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-bg);
+}
+
+body {
+  color: black;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* CMDR Dark Blue Theme - Professional AI Platform */
