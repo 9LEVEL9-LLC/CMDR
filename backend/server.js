@@ -1984,6 +1984,47 @@ app.post('/client/schedule-request', auth('client'), async (req, res) => {
   }
 });
 
+// Public demo schedule request (no auth required)
+app.post('/public/demo-schedule-request', async (req, res) => {
+  try {
+    const { name, email, phone, expertise, clients, revenue, time_slot, meeting_description } = req.body;
+    
+    if (!name || !email || !time_slot) {
+      return res.status(400).json({ ok: false, error: 'Name, email, and time slot are required' });
+    }
+    
+    // Get first advisor (admin) to assign demo requests to
+    const advisorResult = await pool.query(
+      "select id from users where role = 'advisor' or role = 'admin' order by id limit 1"
+    );
+    
+    let advisorId = null;
+    if (advisorResult.rowCount > 0) {
+      advisorId = advisorResult.rows[0].id;
+    }
+    
+    // Store demo request with contact info in meeting_description
+    const fullDescription = `DEMO REQUEST
+Name: ${name}
+Email: ${email}
+Phone: ${phone || 'Not provided'}
+Expertise: ${expertise || 'Not specified'}
+Current Clients: ${clients || 'Not specified'}
+Revenue: ${revenue || 'Not specified'}
+${meeting_description || ''}`;
+    
+    await pool.query(
+      'insert into schedule_requests(advisor_id, time_slot, meeting_description, status) values($1,$2,$3,$4)',
+      [advisorId, time_slot, fullDescription, 'pending']
+    );
+    
+    res.json({ ok: true, message: 'Demo scheduled successfully! You will receive a confirmation email shortly.' });
+  } catch (e) {
+    console.error('Demo schedule error:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 // Admin: CRUD for webinars and signups view
 app.get('/admin/webinars', auth('admin'), async (req, res) => {
   try {

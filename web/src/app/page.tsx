@@ -166,20 +166,21 @@ export default function DemoPage() {
       </section>
 
       {/* Real Impact Section */}
-      <section style={{ padding: '5rem 2rem', backgroundColor: '#f9fafb', margin: 0 }}>
+      <section style={{ padding: '5rem 2rem', backgroundColor: 'white', margin: 0 }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
           <div style={{
-            background: 'linear-gradient(135deg, #00072D 0%, #051650 100%)',
+            backgroundColor: '#f9fafb',
             borderRadius: '1.5rem',
             padding: '3rem',
-            color: 'white',
+            border: '2px solid #E5E7EB',
             marginBottom: '3rem'
           }}>
             <h2 style={{
               fontSize: '2.5rem',
               fontWeight: '700',
               textAlign: 'center',
-              marginBottom: '1rem'
+              marginBottom: '1rem',
+              color: '#00072D'
             }}>
               But Here's the Real Impact...
             </h2>
@@ -188,9 +189,9 @@ export default function DemoPage() {
               textAlign: 'center',
               maxWidth: '800px',
               margin: '0 auto 3rem auto',
-              opacity: 0.9
+              color: '#374151'
             }}>
-              Those 29.5 hours aren't ordinary hours—they're <span style={{ color: '#6B9FFF', fontWeight: '700' }}>AI-powered hours</span>. 
+              Those 29.5 hours aren't ordinary hours—they're <span style={{ color: '#123499', fontWeight: '700' }}>AI-powered hours</span>. 
               Every hour you invest is amplified by automation, intelligence, and scale.
             </p>
 
@@ -203,10 +204,10 @@ export default function DemoPage() {
             }}>
               {/* Path 1: Traditional */}
               <div style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                backgroundColor: 'white',
                 borderRadius: '1rem',
                 padding: '2rem',
-                border: '2px solid rgba(255, 255, 255, 0.2)'
+                border: '2px solid #E5E7EB'
               }}>
                 <div style={{
                   fontSize: '0.875rem',
@@ -214,12 +215,13 @@ export default function DemoPage() {
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
                   marginBottom: '1rem',
-                  opacity: 0.7
+                  color: '#6B7280'
                 }}>WITHOUT CMDR</div>
                 <h3 style={{
                   fontSize: '1.5rem',
                   fontWeight: '700',
-                  marginBottom: '1.5rem'
+                  marginBottom: '1.5rem',
+                  color: '#00072D'
                 }}>Traditional Manual Work</h3>
                 <div style={{
                   display: 'flex',
@@ -228,26 +230,26 @@ export default function DemoPage() {
                 }}>
                   <div>
                     <div style={{ fontSize: '2rem', fontWeight: '700', color: '#9CA3AF' }}>5-8</div>
-                    <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>Max Clients</div>
+                    <div style={{ fontSize: '0.875rem', color: '#6B7280' }}>Max Clients</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '2rem', fontWeight: '700', color: '#9CA3AF' }}>$600K</div>
-                    <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>Annual Revenue</div>
+                    <div style={{ fontSize: '0.875rem', color: '#6B7280' }}>Annual Revenue</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '2rem', fontWeight: '700', color: '#9CA3AF' }}>55h</div>
-                    <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>Work Week</div>
+                    <div style={{ fontSize: '0.875rem', color: '#6B7280' }}>Work Week</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#EF4444' }}>Burned Out</div>
-                    <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>Quality of Life</div>
+                    <div style={{ fontSize: '0.875rem', color: '#6B7280' }}>Quality of Life</div>
                   </div>
                 </div>
               </div>
 
               {/* Path 2: With CMDR */}
               <div style={{
-                backgroundColor: 'white',
+                backgroundColor: '#F0FDF4',
                 borderRadius: '1rem',
                 padding: '2rem',
                 border: '3px solid #10B981',
@@ -307,23 +309,24 @@ export default function DemoPage() {
 
             {/* The Math */}
             <div style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              backgroundColor: 'white',
               borderRadius: '1rem',
               padding: '2.5rem',
-              border: '1px solid rgba(255, 255, 255, 0.1)'
+              border: '2px solid #E5E7EB'
             }}>
               <h3 style={{
                 fontSize: '1.75rem',
                 fontWeight: '700',
                 textAlign: 'center',
-                marginBottom: '2rem'
+                marginBottom: '2rem',
+                color: '#00072D'
               }}>The Exponential Effect in Action</h3>
 
               <p style={{
                 textAlign: 'center',
                 fontSize: '1.125rem',
                 marginBottom: '2.5rem',
-                opacity: 0.9
+                color: '#374151'
               }}>
                 Here's how 29.5 reclaimed hours create exponential returns—not linear time savings,<br/>
                 but multiplicative business growth.
@@ -335,19 +338,20 @@ export default function DemoPage() {
                 gap: '2rem',
                 marginBottom: '2rem'
               }}>
-                <div style={{ textAlign: 'center' }}>
+                  <div style={{ textAlign: 'center' }}>
                   <div style={{
                     fontSize: '1rem',
                     fontWeight: '600',
                     marginBottom: '1rem',
-                    color: '#6B9FFF'
+                    color: '#123499'
                   }}>STEP 1: RECLAIM TIME</div>
                   <div style={{
                     fontSize: '3rem',
                     fontWeight: '700',
-                    marginBottom: '0.5rem'
+                    marginBottom: '0.5rem',
+                    color: '#00072D'
                   }}>29.5h</div>
-                  <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>Freed up weekly through<br/>automation</div>
+                  <div style={{ fontSize: '0.875rem', color: '#6B7280' }}>Freed up weekly through<br/>automation</div>
                 </div>
 
                 <div style={{ textAlign: 'center' }}>
@@ -355,14 +359,15 @@ export default function DemoPage() {
                     fontSize: '1rem',
                     fontWeight: '600',
                     marginBottom: '1rem',
-                    color: '#6B9FFF'
+                    color: '#123499'
                   }}>STEP 2: AI-AMPLIFY IT</div>
                   <div style={{
                     fontSize: '3rem',
                     fontWeight: '700',
-                    marginBottom: '0.5rem'
+                    marginBottom: '0.5rem',
+                    color: '#00072D'
                   }}>14.75h</div>
-                  <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>Applied to growth &<br/>automation strategy</div>
+                  <div style={{ fontSize: '0.875rem', color: '#6B7280' }}>Applied to growth &<br/>automation strategy</div>
                 </div>
 
                 <div style={{ textAlign: 'center' }}>
@@ -378,16 +383,17 @@ export default function DemoPage() {
                     marginBottom: '0.5rem',
                     color: '#10B981'
                   }}>+$1.5M</div>
-                  <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>Additional annual revenue<br/>potential</div>
+                  <div style={{ fontSize: '0.875rem', color: '#6B7280' }}>Additional annual revenue<br/>potential</div>
                 </div>
               </div>
 
               {/* Detailed Breakdown */}
               <div style={{
-                backgroundColor: 'white',
+                backgroundColor: '#F9FAFB',
                 color: '#00072D',
                 borderRadius: '1rem',
-                padding: '2rem'
+                padding: '2rem',
+                border: '1px solid #E5E7EB'
               }}>
                 <h4 style={{
                   fontSize: '1.25rem',
@@ -454,31 +460,33 @@ export default function DemoPage() {
           </div>
 
           {/* CTA */}
-          <button
-            onClick={() => setShowModal(true)}
-            style={{
-              padding: '1.5rem 3rem',
-              fontSize: '1.25rem',
-              fontWeight: '700',
-              backgroundColor: '#10B981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.75rem',
-              cursor: 'pointer',
-              boxShadow: '0 10px 30px rgba(16, 185, 129, 0.3)',
-              transition: 'transform 0.2s, box-shadow 0.2s'
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.transform = 'scale(1.05)';
-              e.currentTarget.style.boxShadow = '0 15px 40px rgba(16, 185, 129, 0.4)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = 'scale(1)';
-              e.currentTarget.style.boxShadow = '0 10px 30px rgba(16, 185, 129, 0.3)';
-            }}
-          >
-            See Your Personalized Demo →
-          </button>
+          <div style={{ textAlign: 'center' }}>
+            <button
+              onClick={() => setShowModal(true)}
+              style={{
+                padding: '1.5rem 3rem',
+                fontSize: '1.25rem',
+                fontWeight: '700',
+                backgroundColor: '#10B981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.75rem',
+                cursor: 'pointer',
+                boxShadow: '0 10px 30px rgba(16, 185, 129, 0.3)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.transform = 'scale(1.05)';
+                e.currentTarget.style.boxShadow = '0 15px 40px rgba(16, 185, 129, 0.4)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 10px 30px rgba(16, 185, 129, 0.3)';
+              }}
+            >
+              See Your Personalized Demo →
+            </button>
+          </div>
         </div>
       </section>
 
@@ -737,8 +745,9 @@ export default function DemoPage() {
             <div style={{ padding: '2rem' }}>
               <form onSubmit={(e) => {
                 e.preventDefault();
-                // Handle form submission - integrate with Calendly or your booking system
-                alert('Form submitted! Redirecting to personalized calendar...');
+                // Save form data to localStorage and redirect to calendar selection
+                localStorage.setItem('demoFormData', JSON.stringify(formData));
+                window.location.href = '/calendar-selection';
               }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                   {/* Name */}
