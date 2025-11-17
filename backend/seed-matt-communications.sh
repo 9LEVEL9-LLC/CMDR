@@ -38,7 +38,7 @@ Looking forward to transforming your legal practice with AI! 🚀',
   
   -- Matt's response
   INSERT INTO project_messages (project_id, user_id, content, created_at) VALUES
-    (matt_id, matt_id,
+    (project_id, matt_id,
      'Thanks for the warm welcome! I''ve been reviewing the onboarding materials and I''m impressed with how thorough the process is.
 
 I have a few quick questions:
