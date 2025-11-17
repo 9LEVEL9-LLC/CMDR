@@ -19,6 +19,10 @@ CHECK (prospect_stage IN ('introduction', 'warm', 'likely_close', NULL));
 ALTER TABLE users 
 ADD COLUMN IF NOT EXISTS converted_to_client_at TIMESTAMP;
 
+-- Add initial_password_changed flag
+ALTER TABLE users 
+ADD COLUMN IF NOT EXISTS initial_password_changed BOOLEAN DEFAULT FALSE;
+
 -- Add index for better query performance on client_type
 CREATE INDEX IF NOT EXISTS idx_users_client_type ON users(client_type);
 
