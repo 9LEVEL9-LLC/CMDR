@@ -5917,6 +5917,95 @@ app.post('/client/onboarding-incomplete', auth('advisor', 'admin'), async (req, 
 // END CLIENT ONBOARDING SYSTEM API ENDPOINTS
 // ============================================================================
 
+// ============================================================================
+// AI RESPONSE GENERATION ENDPOINT
+// ============================================================================
+
+// Generate AI-suggested response based on conversation history
+app.post('/ai/generate-response', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const { conversation_history, user_role, project_id } = req.body;
+
+    if (!conversation_history) {
+      return res.status(400).json({ ok: false, error: 'Conversation history is required' });
+    }
+
+    // Build the AI prompt based on user role
+    const systemPrompt = user_role === 'advisor' 
+      ? 'You are a professional AI advisor helping clients with their projects. Generate a helpful, clear, and professional response to continue the conversation. Be supportive, provide actionable guidance, and address any concerns.'
+      : 'You are helping a client communicate with their advisor about their project. Generate a clear, professional response that addresses the previous messages. Ask clarifying questions if needed and express any concerns or requirements clearly.';
+
+    const userPrompt = `Based on the following conversation history, generate a suggested response:
+
+${conversation_history}
+
+Generate a response that:
+1. Addresses the most recent message
+2. Is professional and clear
+3. Moves the conversation forward productively
+4. Is 2-4 sentences long
+
+Response:`;
+
+    // Use Claude (Anthropic) for response generation
+    const apiKey = process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY;
+    
+    if (!apiKey) {
+      return res.status(500).json({ ok: false, error: 'AI API key not configured' });
+    }
+
+    let suggestedResponse = '';
+
+    // Try Anthropic/Claude first
+    if (process.env.ANTHROPIC_API_KEY) {
+      try {
+        const claudeResponse = await generateClaudeContent(
+          systemPrompt,
+          [{ role: 'user', content: userPrompt }],
+          0.7,
+          500
+        );
+        suggestedResponse = claudeResponse.response.text().trim();
+      } catch (claudeError) {
+        console.error('Claude error, falling back to Gemini:', claudeError.message);
+      }
+    }
+
+    // Fallback to Gemini if Claude fails or not available
+    if (!suggestedResponse && process.env.GEMINI_API_KEY) {
+      try {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || 'gemini-2.0-flash-exp' });
+        
+        const result = await generateContentWithRetries(model, {
+          contents: [{
+            role: 'user',
+            parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
+          }]
+        });
+        
+        suggestedResponse = result.response.text().trim();
+      } catch (geminiError) {
+        console.error('Gemini error:', geminiError.message);
+        return res.status(500).json({ ok: false, error: 'Failed to generate AI response' });
+      }
+    }
+
+    if (!suggestedResponse) {
+      return res.status(500).json({ ok: false, error: 'No AI service available' });
+    }
+
+    res.json({ ok: true, suggested_response: suggestedResponse });
+  } catch (e) {
+    console.error('AI generation error:', e);
+    res.status(500).json({ ok: false, error: e.message || 'Failed to generate AI response' });
+  }
+});
+
+// ============================================================================
+// END AI RESPONSE GENERATION
+// ============================================================================
+
 const port = process.env.PORT || 8080;
 
 // Start listening IMMEDIATELY (critical for Render health checks)

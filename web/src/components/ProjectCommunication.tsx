@@ -21,6 +21,7 @@ export function ProjectCommunication({ projectId }: { projectId: number }) {
   const [input, setInput] = useState("")
   const [userRole, setUserRole] = useState<string>("")
   const [processingApproval, setProcessingApproval] = useState<number | null>(null)
+  const [generatingAI, setGeneratingAI] = useState(false)
   const authHeaders = useMemo<HeadersInit | undefined>(() => {
     const t = typeof window !== 'undefined' ? localStorage.getItem("xsourcing_token") : null
     return t ? { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } : undefined
@@ -122,6 +123,43 @@ export function ProjectCommunication({ projectId }: { projectId: number }) {
     }
   }
 
+  const generateAIResponse = async () => {
+    if (messages.length === 0) {
+      alert('No conversation history to respond to')
+      return
+    }
+
+    setGeneratingAI(true)
+    try {
+      // Get the last few messages for context
+      const recentMessages = messages.slice(-5).map(m => 
+        `${m.author_name} (${m.author_role}): ${m.content}`
+      ).join('\n\n')
+
+      const response = await fetch(`${api}/ai/generate-response`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          conversation_history: recentMessages,
+          user_role: userRole,
+          project_id: projectId
+        })
+      }).then(r => r.json())
+
+      if (response.ok && response.suggested_response) {
+        // Populate the input field with the AI-generated response
+        setInput(response.suggested_response)
+      } else {
+        alert(response.error || 'Failed to generate AI response')
+      }
+    } catch (error) {
+      console.error('AI generation error:', error)
+      alert('Failed to generate AI response')
+    } finally {
+      setGeneratingAI(false)
+    }
+  }
+
   console.log('[ProjectCommunication] userRole:', userRole, 'stageRequests:', stageRequests.length)
 
   return (
@@ -205,9 +243,51 @@ export function ProjectCommunication({ projectId }: { projectId: number }) {
           </ul>
         )}
       </div>
-      <div className="flex gap-2">
-        <input className="flex-1 rounded-md border border-[var(--color-border)] px-3 py-2" placeholder="Write a message…" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } }} />
-        <button className="btn-primary" onClick={send}>Send</button>
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <textarea 
+            className="flex-1 rounded-md border border-[var(--color-border)] px-3 py-2 resize-none" 
+            placeholder="Write a message…" 
+            value={input} 
+            onChange={e=>setInput(e.target.value)} 
+            onKeyDown={e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } }}
+            rows={3}
+          />
+          <div className="flex flex-col gap-2">
+            <button 
+              className="btn-secondary px-4 py-2 text-sm whitespace-nowrap flex items-center gap-2"
+              onClick={generateAIResponse}
+              disabled={generatingAI || messages.length === 0}
+              title="Generate AI-suggested response based on conversation"
+            >
+              {generatingAI ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  AI Response
+                </>
+              )}
+            </button>
+            <button className="btn-primary px-4 py-2" onClick={send}>Send</button>
+          </div>
+        </div>
+        {input && (
+          <div className="text-xs text-[var(--color-text-muted)] flex items-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            You can edit the AI-generated response before sending
+          </div>
+        )}
       </div>
     </div>
   )
