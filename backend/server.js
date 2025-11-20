@@ -66,6 +66,8 @@ console.log('✅ Ping endpoint registered');
 const corsOptions = {
   origin: [
     'https://cmdr.onrender.com',
+    'https://mycmdr.com',
+    'https://www.mycmdr.com',
     'https://nbrain-platform-frontend.onrender.com',
     'https://clients.nbrain.ai',
     'http://localhost:3000',
@@ -358,6 +360,8 @@ async function ensureSchema() {
     CREATE TABLE IF NOT EXISTS credentials (
       id SERIAL PRIMARY KEY,
       user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      service TEXT, -- Optional: provider name (e.g. OpenAI, Google Drive)
+      key TEXT,     -- Optional: logical key identifier (e.g. api_key, folder_url)
       name TEXT NOT NULL,
       type TEXT NOT NULL, -- 'text' or 'file'
       value TEXT, -- for text credentials
@@ -368,6 +372,10 @@ async function ensureSchema() {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+
+  // Ensure newer columns exist on older databases
+  await pool.query('ALTER TABLE credentials ADD COLUMN IF NOT EXISTS service TEXT');
+  await pool.query('ALTER TABLE credentials ADD COLUMN IF NOT EXISTS key TEXT');
 
   // Add index on user_id for better query performance
   await pool.query(`
