@@ -8209,7 +8209,41 @@ app.post('/marketing-automation/integrations/:id/test', auth('client', 'advisor'
   }
 });
 
+// Marketing Automation health check - verify tables exist
+app.get('/marketing-automation/health', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT COUNT(*) as table_count 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_name LIKE 'ma_%'
+    `);
+    
+    const tableCount = parseInt(result.rows[0].table_count);
+    const tablesExist = tableCount >= 37;
+    
+    res.json({
+      ok: true,
+      tables_exist: tablesExist,
+      table_count: tableCount,
+      expected_count: 37,
+      status: tablesExist ? 'ready' : 'migrations_needed',
+      message: tablesExist 
+        ? 'Marketing Automation tables are ready!' 
+        : 'Please run migrations: ./run-marketing-automation-migrations.sh'
+    });
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      error: e.message,
+      tables_exist: false,
+      message: 'Database connection error or tables not created'
+    });
+  }
+});
+
 console.log('✅ Marketing Automation API routes registered');
 console.log('✅ Marketing Automation segment/funnel/sequence routes registered');
+console.log('✅ Marketing Automation health check available at /marketing-automation/health');
 
 
