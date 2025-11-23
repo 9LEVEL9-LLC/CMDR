@@ -375,50 +375,6 @@ export default function SettingsPage() {
         )
     }
   }
-  
-  const handleSaveForm = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!activeIntegration) return
-    
-    const formData: any = {}
-    const apiKeyInput = document.getElementById(`${activeIntegration}-api-key`) as HTMLInputElement
-    
-    if (!apiKeyInput?.value) {
-      alert('API Key is required')
-      return
-    }
-    
-    formData.api_key = apiKeyInput.value
-    
-    // Get additional fields
-    const additionalConfig: any = {}
-    
-    if (activeIntegration === 'substack') {
-      const urlInput = document.getElementById(`${activeIntegration}-url`) as HTMLInputElement
-      if (urlInput?.value) additionalConfig.publication_url = urlInput.value
-    }
-    
-    if (activeIntegration === 'sendgrid') {
-      const fromEmailInput = document.getElementById(`${activeIntegration}-from-email`) as HTMLInputElement
-      if (fromEmailInput?.value) additionalConfig.from_email = fromEmailInput.value
-    }
-    
-    if (activeIntegration === 'pinecone') {
-      const envInput = document.getElementById(`${activeIntegration}-environment`) as HTMLInputElement
-      const indexInput = document.getElementById(`${activeIntegration}-index`) as HTMLInputElement
-      if (envInput?.value) additionalConfig.environment = envInput.value
-      if (indexInput?.value) additionalConfig.index_name = indexInput.value
-    }
-    
-    if (activeIntegration === 'stripe') {
-      const publishableInput = document.getElementById(`${activeIntegration}-publishable`) as HTMLInputElement
-      if (publishableInput?.value) additionalConfig.publishable_key = publishableInput.value
-    }
-    
-    formData.additional_config = additionalConfig
-    
-    saveIntegration(activeIntegration, formData)
-  }
 
   return (
     <div className="space-y-6">
