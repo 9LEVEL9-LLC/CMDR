@@ -277,6 +277,21 @@ export default function MarketingAutomationDashboard() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Link href="/marketing-automation/settings" className="card p-6 hover:shadow-card transition-shadow border-2 border-[var(--color-primary)]">
+          <div className="w-12 h-12 rounded-lg bg-[var(--color-primary)] flex items-center justify-center mb-4">
+            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <h4 className="text-lg font-semibold text-[var(--color-text)] mb-2">🔌 Connect Substack</h4>
+          <p className="text-sm text-[var(--color-text-muted)]">
+            Connect your Substack publication to sync content and enable AI personalization
+          </p>
+          <div className="mt-3 text-xs font-medium text-[var(--color-primary)]">
+            → Start here to connect integrations
+          </div>
+        </Link>
+
         <Link href="/marketing-automation/audience" className="card p-6 hover:shadow-card transition-shadow">
           <div className="w-12 h-12 rounded-lg bg-[var(--color-primary-50)] flex items-center justify-center mb-4">
             <svg className="w-6 h-6 text-[var(--color-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -298,18 +313,6 @@ export default function MarketingAutomationDashboard() {
           <h4 className="text-lg font-semibold text-[var(--color-text)] mb-2">Nurture Campaigns</h4>
           <p className="text-sm text-[var(--color-text-muted)]">
             Create adaptive email sequences that respond to subscriber engagement
-          </p>
-        </Link>
-
-        <Link href="/marketing-automation/performance" className="card p-6 hover:shadow-card transition-shadow">
-          <div className="w-12 h-12 rounded-lg bg-green-50 flex items-center justify-center mb-4">
-            <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-          </div>
-          <h4 className="text-lg font-semibold text-[var(--color-text)] mb-2">Track Performance</h4>
-          <p className="text-sm text-[var(--color-text-muted)]">
-            Monitor real-time metrics, ROI, and AI-powered optimization recommendations
           </p>
         </Link>
       </div>
