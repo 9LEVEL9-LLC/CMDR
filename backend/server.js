@@ -8111,7 +8111,7 @@ app.get('/marketing-automation/campaigns/:id/archive', auth('client', 'advisor',
     
     if (contentType) {
       query += ' AND content_type = $2';
-      params.push(contentType as string);
+      params.push(contentType);
     }
     
     query += ' ORDER BY published_date DESC LIMIT 100';
