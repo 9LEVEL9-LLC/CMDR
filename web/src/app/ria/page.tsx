@@ -116,7 +116,7 @@ export default function RIALandingPage() {
             lineHeight: '1.7',
             fontWeight: '400'
           }}>
-            CMDR is the <strong style={{ color: 'white' }}>AI-powered back-office operating system</strong> built exclusively for independent RIAs. We turn the 20-40 hours you lose each week to compliance, operations, and admin chaos into <span style={{ color: '#6B9FFF', fontWeight: '600' }}>time with clients, strategic growth, and a life outside your practice.</span>
+            CMDR is a <strong style={{ color: 'white' }}>custom-built, fully-owned AI back-office platform</strong> for independent RIAs—not rented SaaS. We build and maintain your dedicated system, turning the 20-40 hours you lose each week to compliance and operations into <span style={{ color: '#6B9FFF', fontWeight: '600' }}>time with clients, strategic growth, and a life outside your practice.</span>
           </p>
 
           <div style={{
@@ -211,7 +211,7 @@ export default function RIALandingPage() {
             margin: '0 0 4rem 0',
             fontStyle: 'italic'
           }}>
-            ✓ No credit card required  •  ✓ 30-day free trial  •  ✓ White-label ready for partner firms
+            ✓ You own the platform, not rent it  •  ✓ We build and maintain it for you  •  ✓ White-label under your brand
           </p>
 
           {/* Stats Grid */}
@@ -457,7 +457,7 @@ export default function RIALandingPage() {
               margin: '0 auto',
               lineHeight: '1.7'
             }}>
-              CMDR is a back-office operating system for RIAs and advisors that behaves like <strong style={{ color: '#123499' }}>Recovery Mode</strong> for your practice: a central place where critical workflows, knowledge, and communication are captured, organized, and executed with AI assistance.
+              CMDR builds you a <strong style={{ color: '#123499' }}>custom, fully-owned back-office operating system</strong>—not a broadly-built SaaS tool. We create your dedicated platform where critical workflows, knowledge, and communication are captured, organized, and executed with AI assistance. You own it. We maintain it.
             </p>
           </div>
 
@@ -473,7 +473,7 @@ export default function RIALandingPage() {
               lineHeight: '1.8',
               margin: '0 0 1.5rem 0'
             }}>
-              Instead of adding "one more app," CMDR wraps around your existing stack and processes to make them lighter, faster, and more reliable.
+              Instead of adding "one more SaaS subscription," we build you a dedicated platform that integrates with your existing stack—making everything lighter, faster, and more reliable while remaining fully under your control.
             </p>
             <p style={{
               fontSize: '1.2rem',
@@ -1046,7 +1046,7 @@ export default function RIALandingPage() {
               margin: 0,
               lineHeight: '1.7'
             }}>
-              <strong style={{ color: '#123499' }}>Everything is white-labeled with your branding</strong> and can be customized to match your firm's specific workflows and compliance requirements
+              <strong style={{ color: '#123499' }}>You own the entire platform—not a SaaS subscription.</strong> We custom-build it for your firm, white-label it with your branding, and maintain it ongoing at your option. This is your system, your data, your competitive advantage.
             </p>
           </div>
         </div>
@@ -1387,24 +1387,24 @@ export default function RIALandingPage() {
           }}>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
               gap: '2rem',
               textAlign: 'center'
             }}>
               <div>
                 <div style={{ fontSize: '2.5rem', fontWeight: '700', color: '#123499', marginBottom: '0.5rem' }}>
-                  No
+                  You Own It
                 </div>
                 <div style={{ fontSize: '1rem', color: '#6B7280' }}>
-                  Long-term Contracts
+                  Your Platform, Not Rented SaaS
                 </div>
               </div>
               <div>
                 <div style={{ fontSize: '2.5rem', fontWeight: '700', color: '#123499', marginBottom: '0.5rem' }}>
-                  30-Day
+                  We Maintain
                 </div>
                 <div style={{ fontSize: '1rem', color: '#6B7280' }}>
-                  Risk-Free Trial
+                  Built & Supported by CMDR
                 </div>
               </div>
               <div>
@@ -1412,7 +1412,7 @@ export default function RIALandingPage() {
                   White-Label
                 </div>
                 <div style={{ fontSize: '1rem', color: '#6B7280' }}>
-                  Your Brand, Not Ours
+                  Your Brand, Your Domain
                 </div>
               </div>
             </div>
@@ -1438,7 +1438,7 @@ export default function RIALandingPage() {
                 CMDR for RIAs
               </h4>
               <p style={{ fontSize: '0.95rem', color: 'rgba(255, 255, 255, 0.7)', lineHeight: '1.6' }}>
-                Recovery mode for your back office. Reclaim time for what matters.
+                Your own AI-powered back office platform. Custom-built, fully-owned, maintained by us.
               </p>
             </div>
             <div>
@@ -1530,14 +1530,14 @@ export default function RIALandingPage() {
               color: '#00072D',
               marginBottom: '1rem'
             }}>
-              Activate Recovery Mode
+              Schedule a Demo
             </h3>
             <p style={{
               fontSize: '1rem',
               color: '#6B7280',
               marginBottom: '2rem'
             }}>
-              Tell us about your firm and we'll show you how CMDR can give you your time back.
+              Tell us about your firm and we'll show you how your own dedicated CMDR platform can transform your back office.
             </p>
 
             <form onSubmit={(e) => {
