@@ -12,3 +12,7 @@ CREATE TABLE IF NOT EXISTS advisor_requests (
 -- Create index for faster queries
 CREATE INDEX IF NOT EXISTS idx_advisor_requests_created_at ON advisor_requests(created_at DESC);
 
+
+
+
+

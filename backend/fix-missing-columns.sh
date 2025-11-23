@@ -32,3 +32,7 @@ SELECT 'Missing columns added successfully!' as status;
 
 echo "✅ Migration complete!"
 
+
+
+
+

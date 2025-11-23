@@ -21,14 +21,16 @@ BEGIN
     'Sarah Thompson',
     'sarah@techvision.ai',
     'sarahtech',
-    'prospect123',
+    '$2b$10$YourHashedPasswordHere',
     'TechVision AI Solutions',
     'https://techvision.ai',
     '(415) 555-0201',
     'prospect',
     'introduction'
-  ) ON CONFLICT (username) DO UPDATE 
-  SET client_type = 'prospect', prospect_stage = 'introduction';
+  ) ON CONFLICT (email) DO UPDATE 
+  SET client_type = 'prospect', prospect_stage = 'introduction', company_name = EXCLUDED.company_name, website_url = EXCLUDED.website_url, phone = EXCLUDED.phone
+  ON CONFLICT (username) DO UPDATE
+  SET client_type = 'prospect', prospect_stage = 'introduction', company_name = EXCLUDED.company_name, website_url = EXCLUDED.website_url, phone = EXCLUDED.phone;
   
   -- Link to advisor
   INSERT INTO advisor_clients (advisor_id, client_id)

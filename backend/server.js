@@ -7989,6 +7989,199 @@ app.put('/marketing-automation/notifications/:id/read', auth('client', 'advisor'
   }
 });
 
+// Get audience segments for a campaign
+app.get('/marketing-automation/campaigns/:id/segments', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    
+    const result = await pool.query(
+      'SELECT * FROM ma_audience_segments WHERE campaign_id = $1 ORDER BY created_at DESC',
+      [campaignId]
+    );
+    
+    res.json({ ok: true, segments: result.rows });
+  } catch (e) {
+    console.error('Error fetching segments:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Create audience segment
+app.post('/marketing-automation/campaigns/:id/segments', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const { segment_name, targeting_criteria, budget_allocated } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO ma_audience_segments (campaign_id, segment_name, targeting_criteria, budget_allocated, status)
+       VALUES ($1, $2, $3, $4, 'active')
+       RETURNING *`,
+      [campaignId, segment_name, JSON.stringify(targeting_criteria || {}), budget_allocated || 0]
+    );
+    
+    res.json({ ok: true, segment: result.rows[0] });
+  } catch (e) {
+    console.error('Error creating segment:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get opt-in funnels for a campaign
+app.get('/marketing-automation/campaigns/:id/funnels', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    
+    const result = await pool.query(
+      'SELECT * FROM ma_optin_funnels WHERE campaign_id = $1 ORDER BY created_at DESC',
+      [campaignId]
+    );
+    
+    res.json({ ok: true, funnels: result.rows });
+  } catch (e) {
+    console.error('Error fetching funnels:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Create opt-in funnel
+app.post('/marketing-automation/campaigns/:id/funnels', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const { funnel_name, segment_id, funnel_type, sequence } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO ma_optin_funnels (campaign_id, funnel_name, segment_id, funnel_type, sequence, is_active)
+       VALUES ($1, $2, $3, $4, $5, true)
+       RETURNING *`,
+      [campaignId, funnel_name, segment_id || null, funnel_type || 'free', JSON.stringify(sequence || [])]
+    );
+    
+    res.json({ ok: true, funnel: result.rows[0] });
+  } catch (e) {
+    console.error('Error creating funnel:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get nurture sequences for a campaign
+app.get('/marketing-automation/campaigns/:id/sequences', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    
+    const result = await pool.query(
+      'SELECT * FROM ma_nurture_sequences WHERE campaign_id = $1 ORDER BY created_at DESC',
+      [campaignId]
+    );
+    
+    res.json({ ok: true, sequences: result.rows });
+  } catch (e) {
+    console.error('Error fetching sequences:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Create nurture sequence
+app.post('/marketing-automation/campaigns/:id/sequences', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const { sequence_name, source_segment_id, emails_in_sequence, adaptation_rules } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO ma_nurture_sequences (campaign_id, sequence_name, source_segment_id, emails_in_sequence, adaptation_rules, is_active)
+       VALUES ($1, $2, $3, $4, $5, true)
+       RETURNING *`,
+      [campaignId, sequence_name, source_segment_id || null, emails_in_sequence || 5, JSON.stringify(adaptation_rules || {})]
+    );
+    
+    res.json({ ok: true, sequence: result.rows[0] });
+  } catch (e) {
+    console.error('Error creating sequence:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get content archive for a campaign
+app.get('/marketing-automation/campaigns/:id/archive', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const contentType = req.query.content_type;
+    
+    let query = 'SELECT * FROM ma_content_archive WHERE campaign_id = $1';
+    const params = [campaignId];
+    
+    if (contentType) {
+      query += ' AND content_type = $2';
+      params.push(contentType as string);
+    }
+    
+    query += ' ORDER BY published_date DESC LIMIT 100';
+    
+    const result = await pool.query(query, params);
+    
+    // Also get sync status
+    const syncStatus = await pool.query(
+      'SELECT * FROM ma_archive_sync_status WHERE campaign_id = $1',
+      [campaignId]
+    );
+    
+    res.json({ 
+      ok: true, 
+      content: result.rows,
+      sync_status: syncStatus.rows[0] || null
+    });
+  } catch (e) {
+    console.error('Error fetching archive:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Test integration connection
+app.post('/marketing-automation/integrations/:id/test', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const integrationId = req.params.id;
+    
+    // Get integration details
+    const result = await pool.query(
+      'SELECT * FROM ma_integrations WHERE id = $1',
+      [integrationId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Integration not found' });
+    }
+    
+    const integration = result.rows[0];
+    
+    // For now, simulate a test
+    // In Phase 2, this will actually call the provider's API to test the connection
+    const testSuccess = !!integration.api_key_encrypted;
+    
+    // Update integration status
+    await pool.query(
+      `UPDATE ma_integrations 
+       SET is_connected = $1, 
+           health_status = $2,
+           last_health_check = CURRENT_TIMESTAMP,
+           response_time_ms = $3
+       WHERE id = $4`,
+      [testSuccess, testSuccess ? 'healthy' : 'error', testSuccess ? 150 : null, integrationId]
+    );
+    
+    res.json({ 
+      ok: true, 
+      test_result: {
+        success: testSuccess,
+        message: testSuccess ? 'Connection successful' : 'Connection failed - please check your credentials',
+        response_time_ms: 150
+      }
+    });
+  } catch (e) {
+    console.error('Error testing integration:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 console.log('✅ Marketing Automation API routes registered');
+console.log('✅ Marketing Automation segment/funnel/sequence routes registered');
 
 

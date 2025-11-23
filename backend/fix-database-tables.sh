@@ -22,3 +22,7 @@ CREATE INDEX IF NOT EXISTS idx_advisor_requests_created_at ON advisor_requests(c
 SELECT 'advisor_requests table created successfully!' as status;
 EOF
 
+
+
+
+

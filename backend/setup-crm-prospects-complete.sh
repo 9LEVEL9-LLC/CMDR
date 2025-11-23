@@ -32,3 +32,7 @@ echo "View prospects in Advisor CRM Dashboard:"
 echo "  🔗 https://cmdr.onrender.com/advisor/crm"
 echo ""
 
+
+
+
+
