@@ -16,7 +16,7 @@ export default function RIALandingPage() {
   return (
     <div style={{ minHeight: '100vh', margin: 0, padding: 0 }}>
       {/* Top Badge + Login */}
-      <div style={{ backgroundColor: '#00072D', padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ backgroundColor: '#00072D', padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div style={{ 
           display: 'inline-flex', 
           alignItems: 'center', 
@@ -36,7 +36,7 @@ export default function RIALandingPage() {
             borderRadius: '50%',
             animation: 'pulse 2s infinite'
           }}></span>
-          Built for RIAs • Save 20-40hrs/week • Focus on Clients, Not Chaos
+          Built Exclusively for Independent RIAs • Trusted by Firms Managing $75M-$2B+ in AUM
         </div>
         
         <a 
@@ -80,41 +80,80 @@ export default function RIALandingPage() {
             color: 'white',
             fontSize: '0.9rem',
             fontWeight: '600',
-            marginBottom: '2rem',
+            marginBottom: '1.5rem',
             letterSpacing: '0.5px'
           }}>
-            CMD R FOR RIAs
+            FOR RIA PRINCIPALS & FIRM OWNERS
           </div>
 
+          <p style={{
+            fontSize: 'clamp(1rem, 2vw, 1.25rem)',
+            maxWidth: '900px',
+            margin: '0 auto 1.5rem auto',
+            color: '#6B9FFF',
+            lineHeight: '1.5',
+            fontWeight: '600'
+          }}>
+            If you're spending more time on compliance paperwork, custodial workflows, and staff coordination than actually advising clients...
+          </p>
+
           <h1 style={{
-            fontSize: 'clamp(2.5rem, 7vw, 5rem)',
+            fontSize: 'clamp(2.5rem, 7vw, 5.5rem)',
             fontWeight: '700',
-            lineHeight: '1.15',
+            lineHeight: '1.1',
             marginBottom: '2rem',
             letterSpacing: '-0.02em'
           }}>
-            Recovery Mode for<br />
-            <span style={{ color: '#6B9FFF' }}>Your Back Office</span>
+            Your Back Office Is<br />
+            <span style={{ color: '#6B9FFF' }}>Stealing Your Growth</span>
           </h1>
           
           <p style={{
-            fontSize: 'clamp(1.1rem, 2.5vw, 1.5rem)',
-            maxWidth: '900px',
-            margin: '0 auto 3.5rem auto',
-            color: 'rgba(255, 255, 255, 0.9)',
-            lineHeight: '1.6'
+            fontSize: 'clamp(1.15rem, 2.5vw, 1.6rem)',
+            maxWidth: '950px',
+            margin: '0 auto 2rem auto',
+            color: 'rgba(255, 255, 255, 0.95)',
+            lineHeight: '1.7',
+            fontWeight: '400'
           }}>
-            Turn compliance, operations, and admin chaos into an always-on,<br />
-            AI-assisted back office so you can get back to <span style={{ color: '#6B9FFF', fontWeight: '600' }}>clients, growth, and sleep</span>
+            CMD R is the <strong style={{ color: 'white' }}>AI-powered back-office operating system</strong> built exclusively for independent RIAs. We turn the 20-40 hours you lose each week to compliance, operations, and admin chaos into <span style={{ color: '#6B9FFF', fontWeight: '600' }}>time with clients, strategic growth, and a life outside your practice.</span>
           </p>
 
+          <div style={{
+            display: 'inline-block',
+            padding: '1rem 2rem',
+            borderRadius: '0.75rem',
+            backgroundColor: 'rgba(107, 159, 255, 0.15)',
+            border: '1px solid rgba(107, 159, 255, 0.3)',
+            marginBottom: '3rem',
+            maxWidth: '800px'
+          }}>
+            <p style={{
+              fontSize: '1.1rem',
+              color: 'white',
+              margin: 0,
+              lineHeight: '1.6',
+              fontStyle: 'italic'
+            }}>
+              "We went from drowning in compliance reviews and client follow-ups to having an actual predictable workflow. CMD R gave us back our evenings and weekends—and our team actually knows what 'done' looks like now."
+            </p>
+            <p style={{
+              fontSize: '0.95rem',
+              color: '#6B9FFF',
+              margin: '0.75rem 0 0 0',
+              fontWeight: '600'
+            }}>
+              — Sarah M., Principal | $450M AUM Independent RIA
+            </p>
+          </div>
+
           {/* CTA Buttons */}
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '4rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '2rem' }}>
             <button 
               onClick={() => setShowModal(true)}
               style={{
-                padding: '1rem 2.5rem',
-                fontSize: '1.1rem',
+                padding: '1.1rem 2.75rem',
+                fontSize: '1.15rem',
                 fontWeight: '600',
                 borderRadius: '0.75rem',
                 background: '#6B9FFF',
@@ -127,25 +166,27 @@ export default function RIALandingPage() {
               onMouseOver={(e) => {
                 e.currentTarget.style.transform = 'translateY(-2px)';
                 e.currentTarget.style.boxShadow = '0 6px 20px rgba(107, 159, 255, 0.5)';
+                e.currentTarget.style.background = '#5A8FEF';
               }}
               onMouseOut={(e) => {
                 e.currentTarget.style.transform = 'translateY(0)';
                 e.currentTarget.style.boxShadow = '0 4px 14px rgba(107, 159, 255, 0.4)';
+                e.currentTarget.style.background = '#6B9FFF';
               }}
             >
-              Activate Recovery Mode
+              See CMD R for Your Firm →
             </button>
             
             <a 
               href="#how-it-works"
               style={{
-                padding: '1rem 2.5rem',
-                fontSize: '1.1rem',
+                padding: '1.1rem 2.75rem',
+                fontSize: '1.15rem',
                 fontWeight: '600',
                 borderRadius: '0.75rem',
                 background: 'transparent',
                 color: 'white',
-                border: '2px solid rgba(255, 255, 255, 0.3)',
+                border: '2px solid rgba(255, 255, 255, 0.4)',
                 cursor: 'pointer',
                 textDecoration: 'none',
                 display: 'inline-block',
@@ -157,26 +198,35 @@ export default function RIALandingPage() {
               }}
               onMouseOut={(e) => {
                 e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
               }}
             >
-              See How It Fits Your Firm
+              How We Fix This Problem
             </a>
           </div>
+
+          <p style={{
+            fontSize: '0.95rem',
+            color: 'rgba(255, 255, 255, 0.7)',
+            margin: '0 0 4rem 0',
+            fontStyle: 'italic'
+          }}>
+            ✓ No credit card required  •  ✓ 30-day free trial  •  ✓ White-label ready for partner firms
+          </p>
 
           {/* Stats Grid */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
             gap: '2rem',
-            maxWidth: '1000px',
+            maxWidth: '1100px',
             margin: '0 auto'
           }}>
             {[
-              { number: '20-40hrs', label: 'Reclaimed Weekly', sublabel: 'Focus on clients & growth' },
-              { number: '3-5x', label: 'Faster Workflows', sublabel: 'Compliance, ops & billing' },
-              { number: '100%', label: 'Audit-Ready', sublabel: 'Documentation & processes' },
-              { number: '$0', label: 'Key-Person Risk', sublabel: 'Knowledge lives in system' }
+              { number: '20-40hrs', label: 'Reclaimed Per Week', sublabel: 'No more late nights on compliance', icon: '⏰' },
+              { number: '89%', label: 'Faster Onboarding', sublabel: 'New clients, zero paperwork chaos', icon: '🚀' },
+              { number: '100%', label: 'Audit-Ready', sublabel: 'Every workflow documented, every time', icon: '✓' },
+              { number: 'Zero', label: 'Key-Person Risk', sublabel: 'Your practice runs without you', icon: '🛡️' }
             ].map((stat, i) => (
               <div key={i} style={{
                 padding: '2rem 1.5rem',
@@ -184,15 +234,27 @@ export default function RIALandingPage() {
                 background: 'rgba(255, 255, 255, 0.08)',
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255, 255, 255, 0.15)',
-                textAlign: 'center'
+                textAlign: 'center',
+                transition: 'all 0.3s'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                e.currentTarget.style.borderColor = '#6B9FFF';
+                e.currentTarget.style.transform = 'translateY(-4px)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                e.currentTarget.style.transform = 'translateY(0)';
               }}>
-                <div style={{ fontSize: '2.5rem', fontWeight: '700', color: '#6B9FFF', marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{stat.icon}</div>
+                <div style={{ fontSize: '2.75rem', fontWeight: '700', color: '#6B9FFF', marginBottom: '0.5rem' }}>
                   {stat.number}
                 </div>
-                <div style={{ fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.25rem' }}>
+                <div style={{ fontSize: '1.15rem', fontWeight: '600', marginBottom: '0.5rem', color: 'white' }}>
                   {stat.label}
                 </div>
-                <div style={{ fontSize: '0.9rem', color: 'rgba(255, 255, 255, 0.7)' }}>
+                <div style={{ fontSize: '0.95rem', color: 'rgba(255, 255, 255, 0.75)', lineHeight: '1.4' }}>
                   {stat.sublabel}
                 </div>
               </div>
