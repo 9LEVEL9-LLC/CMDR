@@ -7871,17 +7871,45 @@ app.post('/marketing-automation/campaigns/:id/integrations', auth('client', 'adv
     // Note: In production, encrypt api_key and api_secret before storing
     // For now, storing as-is for development
     
+    // Mark as connected if API key is provided (basic validation)
+    const isConnected = !!api_key;
+    
     const result = await pool.query(
-      `INSERT INTO ma_integrations (campaign_id, provider, api_key_encrypted, api_secret_encrypted, additional_config, is_connected)
-       VALUES ($1, $2, $3, $4, $5, false)
+      `INSERT INTO ma_integrations (
+        campaign_id, provider, api_key_encrypted, api_secret_encrypted, 
+        additional_config, is_connected, health_status, last_health_check
+      )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
        ON CONFLICT ON CONSTRAINT idx_ma_integrations_unique 
        DO UPDATE SET 
          api_key_encrypted = EXCLUDED.api_key_encrypted,
          api_secret_encrypted = EXCLUDED.api_secret_encrypted,
          additional_config = EXCLUDED.additional_config,
+         is_connected = EXCLUDED.is_connected,
+         health_status = EXCLUDED.health_status,
+         last_health_check = CURRENT_TIMESTAMP,
          updated_at = CURRENT_TIMESTAMP
-       RETURNING id, campaign_id, provider, is_connected, is_active`,
-      [campaignId, provider, api_key, api_secret, JSON.stringify(additional_config || {})]
+       RETURNING id, campaign_id, provider, is_connected, is_active, health_status`,
+      [
+        campaignId, 
+        provider, 
+        api_key, 
+        api_secret || null, 
+        JSON.stringify(additional_config || {}),
+        isConnected,
+        isConnected ? 'healthy' : 'error'
+      ]
+    );
+    
+    // Log the integration save
+    await pool.query(
+      `INSERT INTO ma_integration_logs (integration_id, log_type, message)
+       VALUES ($1, $2, $3)`,
+      [
+        result.rows[0].id,
+        'info',
+        `Integration ${isConnected ? 'connected' : 'disconnected'} via settings`
+      ]
     );
     
     res.json({ ok: true, integration: result.rows[0] });
