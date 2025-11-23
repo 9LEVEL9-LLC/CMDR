@@ -72,6 +72,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/roadmap">Your AI Ecosystem</Link>
               <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/change-requests">Change Requests</Link>
               <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/client/communications">Communications</Link>
+              <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/marketing-automation">Marketing Automation</Link>
               <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/learning">Learning Center</Link>
               <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/client/completed">Completed Projects</Link>
               <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/client/ideas">Project Ideas</Link>
@@ -87,6 +88,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/advisor/create-project">Create new project</Link>
               <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/change-requests">Submit Change Requests</Link>
               <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/roadmap">Company Ecosystems</Link>
+              <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/marketing-automation">Marketing Automation</Link>
               <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/advisor/prebuilt">Pre-Built Projects</Link>
               <Link className="block rounded-md px-3 py-2 hover:bg-white" href="/schedule">Schedule</Link>
             </>

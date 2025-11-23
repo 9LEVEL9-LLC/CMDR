@@ -7559,4 +7559,436 @@ app.post('/admin/run-roadmap-migration', auth('admin'), async (req, res) => {
   }
 });
 
+// ============================================
+// MARKETING AUTOMATION MODULE - API ROUTES
+// ============================================
+
+// Get all campaigns for the current user
+app.get('/marketing-automation/campaigns', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const role = req.user.role;
+    
+    let query;
+    let params;
+    
+    if (role === 'admin') {
+      // Admin can see all campaigns
+      query = 'SELECT * FROM ma_campaigns ORDER BY created_at DESC';
+      params = [];
+    } else {
+      // Users can see their own campaigns
+      query = 'SELECT * FROM ma_campaigns WHERE user_id = $1 ORDER BY created_at DESC';
+      params = [userId];
+    }
+    
+    const result = await pool.query(query, params);
+    res.json({ ok: true, campaigns: result.rows });
+  } catch (e) {
+    console.error('Error fetching campaigns:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get single campaign by ID
+app.get('/marketing-automation/campaigns/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const userId = req.user.userId;
+    const role = req.user.role;
+    
+    const result = await pool.query(
+      'SELECT * FROM ma_campaigns WHERE id = $1',
+      [campaignId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Campaign not found' });
+    }
+    
+    const campaign = result.rows[0];
+    
+    // Check permissions
+    if (role !== 'admin' && campaign.user_id !== userId) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    res.json({ ok: true, campaign });
+  } catch (e) {
+    console.error('Error fetching campaign:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Create new campaign
+app.post('/marketing-automation/campaigns', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const {
+      campaign_name,
+      campaign_description,
+      target_subscribers,
+      target_open_rate,
+      target_conversion_rate,
+      target_ranking,
+      monthly_budget,
+      total_investment,
+      timeline_months,
+      monthly_payment
+    } = req.body;
+    
+    const result = await pool.query(
+      `INSERT INTO ma_campaigns (
+        user_id, campaign_name, campaign_description, 
+        target_subscribers, target_open_rate, target_conversion_rate, target_ranking,
+        monthly_budget, total_investment, timeline_months, monthly_payment,
+        status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'draft')
+      RETURNING *`,
+      [
+        userId, campaign_name, campaign_description,
+        target_subscribers || 100000,
+        target_open_rate || 40.00,
+        target_conversion_rate || 3.00,
+        target_ranking || 10,
+        monthly_budget || 5000.00,
+        total_investment || 45000.00,
+        timeline_months || 3,
+        monthly_payment || 15000.00
+      ]
+    );
+    
+    const campaign = result.rows[0];
+    
+    // Create default campaign features
+    const features = [
+      'Advanced Audience Targeting',
+      'Intelligent Outreach Automation',
+      'Archive-Indexed Personalization',
+      'Adaptive Nurture Sequences',
+      'Conversion Optimization Engine',
+      'Persistent Performance Learning'
+    ];
+    
+    for (const feature of features) {
+      await pool.query(
+        'INSERT INTO ma_campaign_features (campaign_id, feature_name, is_active) VALUES ($1, $2, false)',
+        [campaign.id, feature]
+      );
+    }
+    
+    res.json({ ok: true, campaign });
+  } catch (e) {
+    console.error('Error creating campaign:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Update campaign
+app.put('/marketing-automation/campaigns/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const userId = req.user.userId;
+    const role = req.user.role;
+    
+    // Check ownership
+    const checkResult = await pool.query(
+      'SELECT user_id FROM ma_campaigns WHERE id = $1',
+      [campaignId]
+    );
+    
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Campaign not found' });
+    }
+    
+    if (role !== 'admin' && checkResult.rows[0].user_id !== userId) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    const updates = req.body;
+    const allowedFields = [
+      'campaign_name', 'campaign_description', 'status',
+      'target_subscribers', 'target_open_rate', 'target_conversion_rate', 'target_ranking',
+      'current_subscribers', 'current_open_rate', 'current_conversion_rate', 'current_ranking',
+      'monthly_budget', 'total_investment', 'timeline_months', 'monthly_payment'
+    ];
+    
+    const setClause = [];
+    const values = [];
+    let paramCounter = 1;
+    
+    for (const field of allowedFields) {
+      if (updates[field] !== undefined) {
+        setClause.push(`${field} = $${paramCounter}`);
+        values.push(updates[field]);
+        paramCounter++;
+      }
+    }
+    
+    if (setClause.length === 0) {
+      return res.status(400).json({ ok: false, error: 'No valid fields to update' });
+    }
+    
+    setClause.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(campaignId);
+    
+    const query = `
+      UPDATE ma_campaigns 
+      SET ${setClause.join(', ')} 
+      WHERE id = $${paramCounter}
+      RETURNING *
+    `;
+    
+    const result = await pool.query(query, values);
+    res.json({ ok: true, campaign: result.rows[0] });
+  } catch (e) {
+    console.error('Error updating campaign:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Delete campaign
+app.delete('/marketing-automation/campaigns/:id', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const userId = req.user.userId;
+    const role = req.user.role;
+    
+    // Check ownership
+    const checkResult = await pool.query(
+      'SELECT user_id FROM ma_campaigns WHERE id = $1',
+      [campaignId]
+    );
+    
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Campaign not found' });
+    }
+    
+    if (role !== 'admin' && checkResult.rows[0].user_id !== userId) {
+      return res.status(403).json({ ok: false, error: 'Access denied' });
+    }
+    
+    await pool.query('DELETE FROM ma_campaigns WHERE id = $1', [campaignId]);
+    res.json({ ok: true, message: 'Campaign deleted successfully' });
+  } catch (e) {
+    console.error('Error deleting campaign:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get campaign features
+app.get('/marketing-automation/campaigns/:id/features', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    
+    const result = await pool.query(
+      'SELECT * FROM ma_campaign_features WHERE campaign_id = $1 ORDER BY id',
+      [campaignId]
+    );
+    
+    res.json({ ok: true, features: result.rows });
+  } catch (e) {
+    console.error('Error fetching features:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Toggle campaign feature
+app.put('/marketing-automation/campaigns/:id/features/:featureId', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const { id: campaignId, featureId } = req.params;
+    const { is_active, configuration } = req.body;
+    
+    const updates = [];
+    const values = [];
+    let paramCounter = 1;
+    
+    if (is_active !== undefined) {
+      updates.push(`is_active = $${paramCounter}`);
+      values.push(is_active);
+      paramCounter++;
+      
+      if (is_active) {
+        updates.push(`activated_at = CURRENT_TIMESTAMP`);
+      }
+    }
+    
+    if (configuration !== undefined) {
+      updates.push(`configuration = $${paramCounter}`);
+      values.push(JSON.stringify(configuration));
+      paramCounter++;
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ ok: false, error: 'No updates provided' });
+    }
+    
+    values.push(featureId);
+    values.push(campaignId);
+    
+    const result = await pool.query(
+      `UPDATE ma_campaign_features 
+       SET ${updates.join(', ')} 
+       WHERE id = $${paramCounter} AND campaign_id = $${paramCounter + 1}
+       RETURNING *`,
+      values
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Feature not found' });
+    }
+    
+    res.json({ ok: true, feature: result.rows[0] });
+  } catch (e) {
+    console.error('Error updating feature:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get campaign integrations
+app.get('/marketing-automation/campaigns/:id/integrations', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    
+    const result = await pool.query(
+      'SELECT id, campaign_id, provider, is_connected, is_active, last_sync, sync_status, health_status, last_health_check, response_time_ms FROM ma_integrations WHERE campaign_id = $1',
+      [campaignId]
+    );
+    
+    res.json({ ok: true, integrations: result.rows });
+  } catch (e) {
+    console.error('Error fetching integrations:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Add or update integration
+app.post('/marketing-automation/campaigns/:id/integrations', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const { provider, api_key, api_secret, additional_config } = req.body;
+    
+    // Note: In production, encrypt api_key and api_secret before storing
+    // For now, storing as-is for development
+    
+    const result = await pool.query(
+      `INSERT INTO ma_integrations (campaign_id, provider, api_key_encrypted, api_secret_encrypted, additional_config, is_connected)
+       VALUES ($1, $2, $3, $4, $5, false)
+       ON CONFLICT ON CONSTRAINT idx_ma_integrations_unique 
+       DO UPDATE SET 
+         api_key_encrypted = EXCLUDED.api_key_encrypted,
+         api_secret_encrypted = EXCLUDED.api_secret_encrypted,
+         additional_config = EXCLUDED.additional_config,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING id, campaign_id, provider, is_connected, is_active`,
+      [campaignId, provider, api_key, api_secret, JSON.stringify(additional_config || {})]
+    );
+    
+    res.json({ ok: true, integration: result.rows[0] });
+  } catch (e) {
+    console.error('Error saving integration:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get AI activity log
+app.get('/marketing-automation/campaigns/:id/activity', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    
+    const result = await pool.query(
+      `SELECT * FROM ma_ai_activity_log 
+       WHERE campaign_id = $1 
+       ORDER BY activity_timestamp DESC 
+       LIMIT $2 OFFSET $3`,
+      [campaignId, limit, offset]
+    );
+    
+    res.json({ ok: true, activities: result.rows });
+  } catch (e) {
+    console.error('Error fetching activity log:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get performance metrics
+app.get('/marketing-automation/campaigns/:id/metrics', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const campaignId = req.params.id;
+    const startDate = req.query.start_date || null;
+    const endDate = req.query.end_date || null;
+    
+    let query = 'SELECT * FROM ma_performance_metrics WHERE campaign_id = $1';
+    const params = [campaignId];
+    
+    if (startDate) {
+      query += ' AND date >= $2';
+      params.push(startDate);
+    }
+    
+    if (endDate) {
+      const endIndex = params.length + 1;
+      query += ` AND date <= $${endIndex}`;
+      params.push(endDate);
+    }
+    
+    query += ' ORDER BY date DESC';
+    
+    const result = await pool.query(query, params);
+    res.json({ ok: true, metrics: result.rows });
+  } catch (e) {
+    console.error('Error fetching metrics:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Get notifications for user
+app.get('/marketing-automation/notifications', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const unreadOnly = req.query.unread_only === 'true';
+    
+    let query = 'SELECT * FROM ma_notifications WHERE user_id = $1';
+    if (unreadOnly) {
+      query += ' AND read = false';
+    }
+    query += ' ORDER BY created_at DESC LIMIT 50';
+    
+    const result = await pool.query(query, [userId]);
+    res.json({ ok: true, notifications: result.rows });
+  } catch (e) {
+    console.error('Error fetching notifications:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Mark notification as read
+app.put('/marketing-automation/notifications/:id/read', auth('client', 'advisor', 'admin'), async (req, res) => {
+  try {
+    const notificationId = req.params.id;
+    const userId = req.user.userId;
+    
+    const result = await pool.query(
+      `UPDATE ma_notifications 
+       SET read = true, read_at = CURRENT_TIMESTAMP 
+       WHERE id = $1 AND user_id = $2
+       RETURNING *`,
+      [notificationId, userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Notification not found' });
+    }
+    
+    res.json({ ok: true, notification: result.rows[0] });
+  } catch (e) {
+    console.error('Error marking notification as read:', e);
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+console.log('✅ Marketing Automation API routes registered');
+
 
