@@ -116,7 +116,7 @@ export default function RIALandingPage() {
             lineHeight: '1.7',
             fontWeight: '400'
           }}>
-            CMD R is the <strong style={{ color: 'white' }}>AI-powered back-office operating system</strong> built exclusively for independent RIAs. We turn the 20-40 hours you lose each week to compliance, operations, and admin chaos into <span style={{ color: '#6B9FFF', fontWeight: '600' }}>time with clients, strategic growth, and a life outside your practice.</span>
+            CMDR is the <strong style={{ color: 'white' }}>AI-powered back-office operating system</strong> built exclusively for independent RIAs. We turn the 20-40 hours you lose each week to compliance, operations, and admin chaos into <span style={{ color: '#6B9FFF', fontWeight: '600' }}>time with clients, strategic growth, and a life outside your practice.</span>
           </p>
 
           <div style={{
@@ -135,7 +135,7 @@ export default function RIALandingPage() {
               lineHeight: '1.6',
               fontStyle: 'italic'
             }}>
-              "We went from drowning in compliance reviews and client follow-ups to having an actual predictable workflow. CMD R gave us back our evenings and weekends—and our team actually knows what 'done' looks like now."
+              "We went from drowning in compliance reviews and client follow-ups to having an actual predictable workflow. CMDR gave us back our evenings and weekends—and our team actually knows what 'done' looks like now."
             </p>
             <p style={{
               fontSize: '0.95rem',
@@ -174,7 +174,7 @@ export default function RIALandingPage() {
                 e.currentTarget.style.background = '#6B9FFF';
               }}
             >
-              See CMD R for Your Firm →
+              See CMDR for Your Firm →
             </button>
             
             <a 
@@ -223,10 +223,10 @@ export default function RIALandingPage() {
             margin: '0 auto'
           }}>
             {[
-              { number: '20-40hrs', label: 'Reclaimed Per Week', sublabel: 'No more late nights on compliance', icon: '⏰' },
-              { number: '89%', label: 'Faster Onboarding', sublabel: 'New clients, zero paperwork chaos', icon: '🚀' },
-              { number: '100%', label: 'Audit-Ready', sublabel: 'Every workflow documented, every time', icon: '✓' },
-              { number: 'Zero', label: 'Key-Person Risk', sublabel: 'Your practice runs without you', icon: '🛡️' }
+              { number: '20-40hrs', label: 'Reclaimed Per Week', sublabel: 'No more late nights on compliance', icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/></svg>' },
+              { number: '89%', label: 'Faster Onboarding', sublabel: 'New clients, zero paperwork chaos', icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>' },
+              { number: '100%', label: 'Audit-Ready', sublabel: 'Every workflow documented, every time', icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>' },
+              { number: 'Zero', label: 'Key-Person Risk', sublabel: 'Your practice runs without you', icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>' }
             ].map((stat, i) => (
               <div key={i} style={{
                 padding: '2rem 1.5rem',
@@ -247,7 +247,14 @@ export default function RIALandingPage() {
                 e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
                 e.currentTarget.style.transform = 'translateY(0)';
               }}>
-                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{stat.icon}</div>
+                <div style={{ 
+                  fontSize: '2rem', 
+                  marginBottom: '0.5rem',
+                  width: '48px',
+                  height: '48px',
+                  margin: '0 auto 0.5rem auto',
+                  color: '#6B9FFF'
+                }} dangerouslySetInnerHTML={{ __html: stat.icon }} />
                 <div style={{ fontSize: '2.75rem', fontWeight: '700', color: '#6B9FFF', marginBottom: '0.5rem' }}>
                   {stat.number}
                 </div>
@@ -440,7 +447,7 @@ export default function RIALandingPage() {
               marginBottom: '1.5rem',
               lineHeight: '1.2'
             }}>
-              CMD R: Your AI-Assisted<br />
+              CMDR: Your AI-Assisted<br />
               <span style={{ color: '#123499' }}>Back Office OS</span>
             </h2>
             <p style={{
@@ -450,7 +457,7 @@ export default function RIALandingPage() {
               margin: '0 auto',
               lineHeight: '1.7'
             }}>
-              CMD R is a back-office operating system for RIAs and advisors that behaves like <strong style={{ color: '#123499' }}>Recovery Mode</strong> for your practice: a central place where critical workflows, knowledge, and communication are captured, organized, and executed with AI assistance.
+              CMDR is a back-office operating system for RIAs and advisors that behaves like <strong style={{ color: '#123499' }}>Recovery Mode</strong> for your practice: a central place where critical workflows, knowledge, and communication are captured, organized, and executed with AI assistance.
             </p>
           </div>
 
@@ -466,7 +473,7 @@ export default function RIALandingPage() {
               lineHeight: '1.8',
               margin: '0 0 1.5rem 0'
             }}>
-              Instead of adding "one more app," CMD R wraps around your existing stack and processes to make them lighter, faster, and more reliable.
+              Instead of adding "one more app," CMDR wraps around your existing stack and processes to make them lighter, faster, and more reliable.
             </p>
             <p style={{
               fontSize: '1.2rem',
@@ -499,11 +506,6 @@ export default function RIALandingPage() {
                 icon: '✓',
                 title: 'Build Value',
                 desc: 'A practice that\'s easier to value, sell, or transition because core processes live in a system'
-              },
-              {
-                icon: '✓',
-                title: 'Clarity & Calm',
-                desc: 'Team knows who does what, when, and to what standard—fewer scrambles, more predictability'
               }
             ].map((benefit, i) => (
               <div key={i} style={{
@@ -650,7 +652,7 @@ export default function RIALandingPage() {
               marginBottom: '1.5rem',
               lineHeight: '1.2'
             }}>
-              What CMD R Does<br />
+              What CMDR Does<br />
               <span style={{ color: '#123499' }}>Behind the Scenes</span>
             </h2>
             <p style={{
@@ -790,10 +792,270 @@ export default function RIALandingPage() {
         </div>
       </section>
 
-      {/* For Whom Section */}
+      {/* What You Get Section */}
       <section style={{
         padding: '5rem 2rem',
         background: '#F9FAFB'
+      }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+            <div style={{
+              display: 'inline-block',
+              padding: '0.5rem 1.5rem',
+              borderRadius: '2rem',
+              backgroundColor: '#E6EAF5',
+              color: '#123499',
+              fontSize: '0.9rem',
+              fontWeight: '600',
+              marginBottom: '1.5rem',
+              letterSpacing: '0.5px'
+            }}>
+              COMPLETE PLATFORM
+            </div>
+            <h2 style={{
+              fontSize: 'clamp(2rem, 5vw, 3.5rem)',
+              fontWeight: '700',
+              color: '#00072D',
+              marginBottom: '1.5rem',
+              lineHeight: '1.2'
+            }}>
+              What You Get<br />
+              <span style={{ color: '#123499' }}>Out of the Box</span>
+            </h2>
+            <p style={{
+              fontSize: '1.25rem',
+              color: '#374151',
+              maxWidth: '900px',
+              margin: '0 auto',
+              lineHeight: '1.7'
+            }}>
+              CMDR is a complete back-office operating system—not a single-purpose tool. Every module works together to run your entire RIA practice.
+            </p>
+          </div>
+
+          {/* Core Platform Features */}
+          <div style={{ marginBottom: '3rem' }}>
+            <h3 style={{
+              fontSize: '1.75rem',
+              fontWeight: '700',
+              color: '#00072D',
+              marginBottom: '2rem',
+              textAlign: 'center'
+            }}>
+              Core Platform (All RIAs Get This)
+            </h3>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: '1.5rem'
+            }}>
+              {[
+                {
+                  title: 'Unified Command Center',
+                  desc: 'Single dashboard for all clients, projects, metrics, and AI-powered insights',
+                  icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>'
+                },
+                {
+                  title: 'AI Reporting Engine',
+                  desc: 'Automated report generation with predictive insights and executive summaries',
+                  icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>'
+                },
+                {
+                  title: 'Client Portal & CRM',
+                  desc: 'White-labeled client access with document sharing, messaging, and project tracking',
+                  icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>'
+                },
+                {
+                  title: 'Project Management',
+                  desc: 'Track engagements, deliverables, deadlines, and team assignments in real-time',
+                  icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm-2 14l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>'
+                },
+                {
+                  title: 'Document Management',
+                  desc: 'Centralized file storage with version control, tags, and client-specific access',
+                  icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-1 12H5V8h14v10z"/></svg>'
+                },
+                {
+                  title: 'Team Collaboration',
+                  desc: 'Internal messaging, task assignments, notes, and knowledge base',
+                  icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>'
+                },
+                {
+                  title: 'Calendar & Scheduling',
+                  desc: 'Integrated scheduling with automated reminders and client booking',
+                  icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z"/></svg>'
+                },
+                {
+                  title: 'Email Integration',
+                  desc: 'Connect Gmail, Outlook, or any email—track conversations by client',
+                  icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>'
+                },
+                {
+                  title: 'Analytics & Insights',
+                  desc: 'Revenue tracking, utilization rates, client health scores, and growth metrics',
+                  icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>'
+                }
+              ].map((feature, i) => (
+                <div key={i} style={{
+                  background: 'white',
+                  padding: '1.75rem',
+                  borderRadius: '0.75rem',
+                  border: '1px solid #E5E7EB',
+                  transition: 'all 0.3s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.borderColor = '#123499';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(18, 52, 153, 0.1)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.borderColor = '#E5E7EB';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}>
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    color: '#123499',
+                    marginBottom: '1rem'
+                  }} dangerouslySetInnerHTML={{ __html: feature.icon }} />
+                  <h4 style={{
+                    fontSize: '1.15rem',
+                    fontWeight: '700',
+                    color: '#00072D',
+                    marginBottom: '0.5rem'
+                  }}>
+                    {feature.title}
+                  </h4>
+                  <p style={{
+                    fontSize: '0.95rem',
+                    color: '#6B7280',
+                    lineHeight: '1.5',
+                    margin: 0
+                  }}>
+                    {feature.desc}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* RIA-Specific Modules */}
+          <div style={{
+            background: 'linear-gradient(135deg, #00072D 0%, #051650 100%)',
+            padding: '3rem',
+            borderRadius: '1rem',
+            marginTop: '3rem'
+          }}>
+            <h3 style={{
+              fontSize: '1.75rem',
+              fontWeight: '700',
+              color: '#6B9FFF',
+              marginBottom: '1.5rem',
+              textAlign: 'center'
+            }}>
+              RIA-Specific Modules
+            </h3>
+            <p style={{
+              fontSize: '1.1rem',
+              color: 'rgba(255, 255, 255, 0.9)',
+              textAlign: 'center',
+              marginBottom: '2.5rem',
+              maxWidth: '800px',
+              margin: '0 auto 2.5rem auto'
+            }}>
+              Beyond the core platform, you get specialized workflows built specifically for investment advisory firms
+            </p>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              gap: '1.5rem'
+            }}>
+              {[
+                {
+                  title: 'Compliance Workflow Engine',
+                  desc: 'ADV updates, marketing review workflows, CCO checklists, Form CRS automation, and audit trail documentation'
+                },
+                {
+                  title: 'Client Onboarding Automation',
+                  desc: 'Account opening checklists, custodian integration prep, IPS workflows, and risk tolerance documentation'
+                },
+                {
+                  title: 'Quarterly Review System',
+                  desc: 'Automated prep of performance reports, rebalancing recommendations, and meeting agendas with AI summaries'
+                },
+                {
+                  title: 'Billing & Invoicing',
+                  desc: 'AUM-based fee calculations, invoice generation, payment tracking, and reconciliation with custodians'
+                },
+                {
+                  title: 'CRM for Financial Advisors',
+                  desc: 'Household management, beneficiary tracking, account linking, and financial planning milestone tracking'
+                },
+                {
+                  title: 'Regulatory Calendar',
+                  desc: 'SEC/state filing deadlines, compliance training reminders, renewal dates, and regulatory update alerts'
+                }
+              ].map((module, i) => (
+                <div key={i} style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  backdropFilter: 'blur(10px)',
+                  padding: '2rem',
+                  borderRadius: '0.75rem',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  transition: 'all 0.3s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                  e.currentTarget.style.borderColor = '#6B9FFF';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                }}>
+                  <h4 style={{
+                    fontSize: '1.2rem',
+                    fontWeight: '700',
+                    color: '#6B9FFF',
+                    marginBottom: '0.75rem'
+                  }}>
+                    {module.title}
+                  </h4>
+                  <p style={{
+                    fontSize: '0.95rem',
+                    color: 'rgba(255, 255, 255, 0.85)',
+                    lineHeight: '1.6',
+                    margin: 0
+                  }}>
+                    {module.desc}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{
+            marginTop: '3rem',
+            textAlign: 'center',
+            padding: '2rem',
+            background: 'white',
+            borderRadius: '0.75rem',
+            border: '2px solid #123499'
+          }}>
+            <p style={{
+              fontSize: '1.2rem',
+              color: '#00072D',
+              margin: 0,
+              lineHeight: '1.7'
+            }}>
+              <strong style={{ color: '#123499' }}>Everything is white-labeled with your branding</strong> and can be customized to match your firm's specific workflows and compliance requirements
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* For Whom Section */}
+      <section style={{
+        padding: '5rem 2rem',
+        background: 'white'
       }}>
         <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'center' }}>
           <h2 style={{
@@ -812,7 +1074,7 @@ export default function RIALandingPage() {
             lineHeight: '1.8',
             marginBottom: '2rem'
           }}>
-            CMD R is designed for RIAs, hybrid firms, and independent advisors who have moved past the solo spreadsheet stage but are not interested in becoming full-time COOs.
+            CMDR is designed for RIAs, hybrid firms, and independent advisors who have moved past the solo spreadsheet stage but are not interested in becoming full-time COOs.
           </p>
           <p style={{
             fontSize: '1.25rem',
@@ -837,7 +1099,7 @@ export default function RIALandingPage() {
               margin: 0,
               fontWeight: '500'
             }}>
-              If you're feeling <strong style={{ color: '#123499' }}>constant pressure around compliance, staff capacity, or inconsistent client experience</strong> as you grow, CMD R gives you a way to scale your back office without scaling your headaches.
+              If you're feeling <strong style={{ color: '#123499' }}>constant pressure around compliance, staff capacity, or inconsistent client experience</strong> as you grow, CMDR gives you a way to scale your back office without scaling your headaches.
             </p>
           </div>
         </div>
@@ -1032,7 +1294,7 @@ export default function RIALandingPage() {
               margin: 0,
               fontWeight: '500'
             }}>
-              CMD R exists to give independent advisors that edge: a disciplined, AI-assisted operating system that quietly runs in the background so you can step fully into the roles only you can play—<span style={{ color: '#6B9FFF' }}>trusted guide, strategist, and architect of your clients' financial lives.</span>
+              CMDR exists to give independent advisors that edge: a disciplined, AI-assisted operating system that quietly runs in the background so you can step fully into the roles only you can play—<span style={{ color: '#6B9FFF' }}>trusted guide, strategist, and architect of your clients' financial lives.</span>
             </p>
           </div>
         </div>
@@ -1060,7 +1322,7 @@ export default function RIALandingPage() {
             lineHeight: '1.7',
             marginBottom: '3rem'
           }}>
-            See what CMD R looks like inside a firm like yours and where it can immediately give you time, revenue, and peace of mind back.
+            See what CMDR looks like inside a firm like yours and where it can immediately give you time, revenue, and peace of mind back.
           </p>
 
           <div style={{ display: 'flex', gap: '1.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -1173,7 +1435,7 @@ export default function RIALandingPage() {
           }}>
             <div>
               <h4 style={{ fontSize: '1.2rem', fontWeight: '700', marginBottom: '1rem', color: '#6B9FFF' }}>
-                CMD R for RIAs
+                CMDR for RIAs
               </h4>
               <p style={{ fontSize: '0.95rem', color: 'rgba(255, 255, 255, 0.7)', lineHeight: '1.6' }}>
                 Recovery mode for your back office. Reclaim time for what matters.
@@ -1203,7 +1465,7 @@ export default function RIALandingPage() {
                 Contact
               </h4>
               <p style={{ fontSize: '0.95rem', color: 'rgba(255, 255, 255, 0.7)', lineHeight: '1.6' }}>
-                Questions about CMD R for RIAs?<br />
+                Questions about CMDR for RIAs?<br />
                 <a href="mailto:ria@mycmdr.com" style={{ color: '#6B9FFF', textDecoration: 'none' }}>
                   ria@mycmdr.com
                 </a>
@@ -1216,7 +1478,7 @@ export default function RIALandingPage() {
             color: 'rgba(255, 255, 255, 0.5)',
             fontSize: '0.9rem'
           }}>
-            © 2025 CMD R. All rights reserved.
+            © 2025 CMDR. All rights reserved.
           </div>
         </div>
       </footer>
@@ -1275,7 +1537,7 @@ export default function RIALandingPage() {
               color: '#6B7280',
               marginBottom: '2rem'
             }}>
-              Tell us about your firm and we'll show you how CMD R can give you your time back.
+              Tell us about your firm and we'll show you how CMDR can give you your time back.
             </p>
 
             <form onSubmit={(e) => {
